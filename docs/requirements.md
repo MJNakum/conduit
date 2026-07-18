@@ -50,7 +50,7 @@ When connecting, show a **live, real** pipeline of steps reflecting the actual c
 ## Core Features
 
 ### Terminal & sessions
-- **Split terminal**: 2-way and 4-way splits simultaneously (4 = one per corner). Splits are tab arrangements (think Chrome tabs) and **each pane can be a different host**.
+- **Split terminal** *(separate track — see `docs/splits.md`)*: **drag-and-drop** pane layout (not fixed 1/2/4 buttons), **per-pane close**, and **confirm before disconnecting** any live session. Splits are tab arrangements and **each pane can be a different host**. Pulled out of Phase 1; taken up as its own effort.
 - **Terminal groups**: a group holds N terminals shown as horizontal tabs on top; open the whole group with one click.
 - **Reconnect / auto-reconnect** on dropped connections *(must-have)*.
 - **Find in terminal**: `Cmd+F` opens in-terminal scrollback search *(must-have)*.

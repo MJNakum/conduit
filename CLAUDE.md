@@ -44,6 +44,7 @@ A **modern, local-first SSH client for macOS**. Inspirations: mtPuTTY (multi-tab
 - No secrets in code, logs, or error messages. Redact host credentials in any diagnostic output.
 - Prefer standard SSH file formats on disk so import/export stays trivial.
 - Ask before adding a new dependency of nontrivial size; note the weight tradeoff.
+- **No emoji in the UI or code.** Use icons from `@lucide/svelte` (already a dep). This applies everywhere — host icons, tab bar, buttons, status glyphs.
 
 ## How to work with me
 
