@@ -19,11 +19,30 @@ enum SessionInput {
     Resize { cols: u32, rows: u32 },
 }
 
+/// Connection credentials, kept in RAM for the session's lifetime so reconnect
+/// can reuse them. Never persisted to disk or logs (Keychain is Phase 2).
+#[derive(Clone)]
+struct Creds {
+    host: String,
+    port: u16,
+    user: String,
+    password: String,
+}
+
+/// A tracked session. `tx` is `None` while disconnected — the entry lingers so
+/// `ssh_reconnect` can restart it; `ssh_disconnect` drops the entry entirely.
+struct Session {
+    tx: Option<mpsc::UnboundedSender<SessionInput>>,
+    creds: Creds,
+}
+
+type Sessions = Arc<Mutex<HashMap<String, Session>>>;
+
 #[derive(Default)]
 pub struct SshState {
     // ponytail: single global map guarded by a std Mutex — fine for the handful
     // of sessions a user opens; shard or use dashmap only if that ever bottlenecks.
-    sessions: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<SessionInput>>>>,
+    sessions: Sessions,
 }
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
@@ -89,28 +108,61 @@ pub async fn ssh_connect(
     password: String,
 ) -> Result<String, String> {
     let id = format!("s{}", NEXT_ID.fetch_add(1, Ordering::Relaxed));
+    state.sessions.lock().unwrap().insert(
+        id.clone(),
+        Session {
+            tx: None,
+            creds: Creds { host, port, user, password },
+        },
+    );
+    start_session(app, id.clone(), state.sessions.clone());
+    Ok(id)
+}
+
+/// Restart a session in place (same id), reusing its retained credentials.
+#[tauri::command]
+pub fn ssh_reconnect(app: AppHandle, state: State<'_, SshState>, id: String) -> Result<(), String> {
+    {
+        let sessions = state.sessions.lock().unwrap();
+        let s = sessions.get(&id).ok_or("no such session")?;
+        if s.tx.is_some() {
+            return Ok(()); // already connected — nothing to do
+        }
+    }
+    start_session(app, id, state.sessions.clone());
+    Ok(())
+}
+
+/// Spawn the async task that owns the russh session for `id`, wiring a fresh
+/// input channel. Reads the retained creds from the map.
+fn start_session(app: AppHandle, id: String, sessions: Sessions) {
+    let creds = match sessions.lock().unwrap().get(&id) {
+        Some(s) => s.creds.clone(),
+        None => return,
+    };
     let (tx, rx) = mpsc::unbounded_channel::<SessionInput>();
+    match sessions.lock().unwrap().get_mut(&id) {
+        Some(s) => s.tx = Some(tx),
+        None => return,
+    }
 
-    state
-        .sessions
-        .lock()
-        .unwrap()
-        .insert(id.clone(), tx);
-
-    let sessions = state.sessions.clone();
-    let task_id = id.clone();
     tauri::async_runtime::spawn(async move {
-        let result = run_session(&app, &task_id, host, port, user, password, rx).await;
+        let result = run_session(
+            &app, &id, creds.host, creds.port, creds.user, creds.password, rx,
+        )
+        .await;
         // Never leak credentials into the error surfaced to the UI.
         let final_state = match result {
             Ok(reason) => ConnState::Disconnected { reason },
             Err(message) => ConnState::Error { message },
         };
-        emit_state(&app, &task_id, final_state);
-        sessions.lock().unwrap().remove(&task_id);
+        emit_state(&app, &id, final_state);
+        // Retain the entry (and creds) so the user can reconnect; just mark the
+        // sender gone. ssh_disconnect removes the entry outright.
+        if let Some(s) = sessions.lock().unwrap().get_mut(&id) {
+            s.tx = None;
+        }
     });
-
-    Ok(id)
 }
 
 /// Owns the russh session for its whole lifetime. Returns an optional
@@ -200,7 +252,7 @@ async fn run_session(
 #[tauri::command]
 pub fn ssh_write(state: State<'_, SshState>, id: String, data: String) -> Result<(), String> {
     let sessions = state.sessions.lock().unwrap();
-    let tx = sessions.get(&id).ok_or("no such session")?;
+    let tx = session_tx(&sessions, &id)?;
     tx.send(SessionInput::Data(data.into_bytes()))
         .map_err(|_| "session closed".to_string())
 }
@@ -213,7 +265,26 @@ pub fn ssh_resize(
     rows: u32,
 ) -> Result<(), String> {
     let sessions = state.sessions.lock().unwrap();
-    let tx = sessions.get(&id).ok_or("no such session")?;
+    let tx = session_tx(&sessions, &id)?;
     tx.send(SessionInput::Resize { cols, rows })
         .map_err(|_| "session closed".to_string())
+}
+
+fn session_tx<'a>(
+    sessions: &'a HashMap<String, Session>,
+    id: &str,
+) -> Result<&'a mpsc::UnboundedSender<SessionInput>, String> {
+    sessions
+        .get(id)
+        .ok_or("no such session")?
+        .tx
+        .as_ref()
+        .ok_or_else(|| "session not connected".to_string())
+}
+
+/// Drop the session: removing its sender ends the select loop (rx yields None),
+/// which closes the channel and lets the task exit cleanly.
+#[tauri::command]
+pub fn ssh_disconnect(state: State<'_, SshState>, id: String) {
+    state.sessions.lock().unwrap().remove(&id);
 }

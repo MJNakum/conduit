@@ -12,12 +12,12 @@ Build **one phase at a time**. At the start of each phase, restate the plan and 
 ## Phase 1 — Core terminal experience (MVP)
 - Host list view: name, tags (filterable), custom/auto icon, recent/favorites.
 - Tabbed terminals + pinned "all sessions" main tab that can't close.
-- 2-way and 4-way splits, each pane a potentially different host.
+- ~~2-way and 4-way splits~~ → **deferred to a separate track** (drag-and-drop layout, per-pane close, confirm-before-disconnect). See `docs/splits.md`. Not part of Phase 1 acceptance.
 - Live connection stepper driven by real connection events.
 - Reconnect / auto-reconnect on drop.
 - `Cmd+F` in-terminal search.
 - Global fuzzy search + `Cmd+K` command palette.
-- **Exit criteria:** can save, organize, open, and reconnect real hosts with split panes.
+- **Exit criteria:** can save, organize, open, and reconnect real hosts in tabs. (Splits moved to their own track — `docs/splits.md`.)
 
 ## Phase 2 — Auth, keys, security (MVP)
 - Key manager: import + in-app generation (ed25519, RSA, ECDSA).
