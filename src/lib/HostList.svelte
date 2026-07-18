@@ -1,156 +1,419 @@
 <script lang="ts">
+  import { onMount, tick } from 'svelte'
+  import { Search, Plus, Star, Pencil, Trash2, Rows3, Rows4 } from '@lucide/svelte'
   import HostModal from './HostModal.svelte'
-  import { store, deleteHost, hostIcon, blankHost, type Host } from './state.svelte'
+  import { store, ui, deleteHost, hostIcon, blankHost, tabHost, type Host } from './state.svelte'
 
   let { onopen }: { onopen: (h: Host) => void } = $props()
 
   let filter = $state('')
   let editing = $state<Host | null>(null)
+  let dense = $state(false)
+  let sel = $state(0)
+  let searchEl = $state<HTMLInputElement>()
 
-  const filtered = $derived(
-    store.hosts.filter((h) => {
-      const q = filter.toLowerCase().trim()
-      if (!q) return true
-      return (
-        h.name.toLowerCase().includes(q) ||
-        h.hostname.toLowerCase().includes(q) ||
-        h.tags.some((t) => t.toLowerCase().includes(q))
-      )
-    }),
+  const q = $derived(filter.toLowerCase().trim())
+  function match(h: Host): boolean {
+    if (!q) return true
+    return (
+      h.name.toLowerCase().includes(q) ||
+      h.hostname.toLowerCase().includes(q) ||
+      h.tags.some((t) => t.toLowerCase().includes(q))
+    )
+  }
+
+  const filtered = $derived(store.hosts.filter(match))
+  const favorites = $derived(filtered.filter((h) => h.favorite))
+  // When searching we show one flat list; otherwise Favorites + the rest.
+  const rest = $derived(q ? filtered : filtered.filter((h) => !h.favorite))
+  // Flat display order — the target of arrow-key selection.
+  const visible = $derived(q ? filtered : [...favorites, ...rest])
+
+  // Live sessions for the "Active now" strip — one card per open tab.
+  const live = $derived(
+    ui.tabs
+      .map((t) => ({ host: tabHost(t), phase: t.panes.find((p) => p.phase)?.phase ?? '', key: t.key }))
+      .filter((x) => x.host),
   )
+
+  function statusColor(phase: string): string {
+    if (phase === 'connecting' || phase === 'authenticating') return 'hsl(var(--connecting))'
+    if (phase === 'connected') return 'hsl(var(--primary))'
+    if (phase === 'error' || phase === 'disconnected') return 'hsl(var(--destructive))'
+    return 'hsl(var(--muted-foreground))'
+  }
+  const phaseText: Record<string, string> = {
+    connecting: 'connecting…',
+    authenticating: 'authenticating…',
+    connected: 'connected',
+    disconnected: 'disconnected',
+    error: 'error',
+  }
+
+  function goTab(key: string) {
+    ui.active = key
+    tick().then(() => window.dispatchEvent(new Event('resize')))
+  }
+
+  // Keep selection in range as the list changes.
+  $effect(() => {
+    if (sel >= visible.length) sel = Math.max(0, visible.length - 1)
+  })
+
+  // Keyboard: '/' focuses search, arrows move selection, Enter connects — but
+  // only while the Sessions/home tab is the active surface.
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (ui.active !== 'home' || editing) return
+      const inSearch = e.target === searchEl
+      if (e.key === '/' && !inSearch) {
+        e.preventDefault()
+        searchEl?.focus()
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        sel = Math.min(sel + 1, visible.length - 1)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        sel = Math.max(sel - 1, 0)
+      } else if (e.key === 'Enter' && visible[sel]) {
+        e.preventDefault()
+        onopen(visible[sel])
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 </script>
 
-<header>
-  <h1>Hosts</h1>
-  <input class="filter" placeholder="filter by name or tag" bind:value={filter} />
-  <button class="primary" onclick={() => (editing = blankHost())}>+ New host</button>
-</header>
+<div class="toolbar">
+  <div class="seg"><button class="active">All Hosts</button></div>
+  <div class="search">
+    <Search size={14} color="hsl(var(--muted-foreground))" />
+    <input bind:this={searchEl} bind:value={filter} placeholder="Search hosts…   /" />
+  </div>
+  <div class="spacer"></div>
+  <div class="seg density">
+    <button class:active={!dense} title="Comfortable" aria-label="Comfortable" onclick={() => (dense = false)}>
+      <Rows3 size={14} />
+    </button>
+    <button class:active={dense} title="Compact" aria-label="Compact" onclick={() => (dense = true)}>
+      <Rows4 size={14} />
+    </button>
+  </div>
+  <button class="btn primary" onclick={() => (editing = blankHost())}>
+    <Plus size={14} /> New Host
+  </button>
+</div>
 
-<ul class="hosts">
-  {#each filtered as h (h.id)}
-    {@const Icon = hostIcon(h)}
-    <li>
-      <button class="open" onclick={() => onopen(h)}>
-        <span class="icon" style:color={h.color ?? undefined}><Icon size={18} /></span>
-        <span class="meta">
-          <span class="name">{h.name} {#if h.favorite}★{/if}</span>
-          <span class="dim">{h.user}@{h.hostname}:{h.port}</span>
-        </span>
-        <span class="tags">{#each h.tags as t}<span class="tag">{t}</span>{/each}</span>
+{#if live.length}
+  <div class="activebar">
+    {#each live as l (l.key)}
+      <button class="acard" onclick={() => goTab(l.key)}>
+        <div class="top"><span class="dot" style:background={statusColor(l.phase)}></span> {l.host?.name}</div>
+        <div class="meta mono">{phaseText[l.phase] ?? 'idle'}</div>
       </button>
-      <span class="rowactions">
-        <button onclick={() => (editing = { ...h })}>Edit</button>
-        <button onclick={() => deleteHost(h.id)}>Delete</button>
-      </span>
-    </li>
+    {/each}
+  </div>
+{/if}
+
+<div class="listscroll" class:dense>
+  {#if visible.length === 0}
+    <div class="empty">
+      <h2>No hosts yet</h2>
+      <p class="muted">Add your first host to get started.</p>
+      <button class="btn primary" onclick={() => (editing = blankHost())}><Plus size={14} /> Add a host</button>
+    </div>
   {:else}
-    <li class="empty">No hosts yet. Add one to get started.</li>
-  {/each}
-</ul>
+    {#if !q && favorites.length}
+      <div class="cluster-h"><Star size={12} color="hsl(var(--amber))" /> Favorites</div>
+      {#each favorites as h (h.id)}
+        {@render row(h, visible.indexOf(h))}
+      {/each}
+    {/if}
+    {#if rest.length}
+      <div class="cluster-h">{q ? `${filtered.length} match${filtered.length === 1 ? '' : 'es'}` : `All Hosts · ${store.hosts.length}`}</div>
+      {#each rest as h (h.id)}
+        {@render row(h, visible.indexOf(h))}
+      {/each}
+    {/if}
+  {/if}
+</div>
+
+{#snippet row(h: Host, i: number)}
+  {@const Icon = hostIcon(h)}
+  <div
+    class="row"
+    class:sel={i === sel}
+    role="button"
+    tabindex="-1"
+    onclick={() => onopen(h)}
+    onmouseenter={() => (sel = i)}
+    onkeydown={(e) => { if (e.key === 'Enter') onopen(h) }}
+  >
+    {#if h.color}<span class="rail" style:background={h.color}></span>{/if}
+    <span class="hico" style:color={h.color ?? undefined}><Icon size={16} /></span>
+    <span class="name">{h.name}</span>
+    <span class="addr muted mono">{h.user}@{h.hostname}:{h.port}</span>
+    {#each h.tags as t}<span class="chip tag">{t}</span>{/each}
+    <span class="spacer"></span>
+    <span class="actions">
+      <button class="iconbtn" title="Edit" aria-label="Edit" onclick={(e) => { e.stopPropagation(); editing = { ...h } }}>
+        <Pencil size={14} />
+      </button>
+      <button class="iconbtn" title="Delete" aria-label="Delete" onclick={(e) => { e.stopPropagation(); deleteHost(h.id) }}>
+        <Trash2 size={14} />
+      </button>
+    </span>
+    {#if h.favorite}<span class="star"><Star size={14} /></span>{/if}
+  </div>
+{/snippet}
 
 {#if editing}
   <HostModal host={editing} onclose={() => (editing = null)} />
 {/if}
 
 <style>
-  header {
+  .toolbar {
+    height: 46px;
+    flex: none;
     display: flex;
     align-items: center;
-    gap: 0.8rem;
-    padding: 0.8rem 1rem;
-    border-bottom: 1px solid #222;
+    gap: 8px;
+    padding: 0 12px;
+    border-bottom: 1px solid hsl(var(--border));
   }
-  header h1 {
-    font-size: 1.1rem;
-    margin: 0;
+  .seg {
+    display: flex;
+    background: hsl(var(--muted));
+    border-radius: 7px;
+    padding: 2px;
   }
-  .filter {
+  .seg button {
+    display: flex;
+    align-items: center;
+    padding: 4px 11px;
+    border: none;
+    background: none;
+    border-radius: 5px;
+    color: hsl(var(--muted-foreground));
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .seg.density button {
+    padding: 4px 8px;
+  }
+  .seg button.active {
+    background: hsl(var(--card));
+    color: hsl(var(--foreground));
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  }
+  .search {
     flex: 1;
-    padding: 0.45rem;
-    background: #1a1a1a;
-    border: 1px solid #333;
-    color: #eee;
-    border-radius: 4px;
-  }
-  .hosts {
-    list-style: none;
-    margin: 0;
-    padding: 0.5rem;
-    overflow-y: auto;
-  }
-  .hosts li {
+    max-width: 320px;
     display: flex;
     align-items: center;
-    border-radius: 6px;
+    gap: 8px;
+    background: hsl(var(--muted));
+    border: 1px solid transparent;
+    border-radius: 7px;
+    padding: 6px 10px;
   }
-  .hosts li:hover {
-    background: #1a1a1a;
+  .search:focus-within {
+    border-color: hsl(var(--ring) / 0.5);
   }
-  .open {
+  .search input {
     flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
-    padding: 0.6rem;
     background: none;
     border: none;
+    outline: none;
     color: inherit;
-    text-align: left;
+    font-size: 12.5px;
+    font-family: inherit;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    border: none;
+    border-radius: 7px;
+    background: hsl(var(--muted));
+    color: inherit;
+    font-size: 12.5px;
+    font-family: inherit;
     cursor: pointer;
   }
-  .icon {
-    display: flex;
-    color: #9aa;
-    flex: none;
+  .btn:hover {
+    background: hsl(var(--border));
   }
-  .meta {
-    display: flex;
-    flex-direction: column;
-  }
-  .name {
+  .btn.primary {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
     font-weight: 600;
   }
-  .dim {
-    color: #888;
-    font-size: 0.8rem;
+  .btn.primary:hover {
+    filter: brightness(1.08);
   }
-  .tags {
-    margin-left: auto;
+
+  /* ---- active now ---- */
+  .activebar {
+    flex: none;
     display: flex;
-    gap: 0.3rem;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid hsl(var(--border));
+    overflow-x: auto;
   }
-  .tag {
-    background: #263042;
-    color: #9cc;
-    padding: 0.1rem 0.4rem;
-    border-radius: 999px;
-    font-size: 0.7rem;
-  }
-  .rowactions {
-    display: flex;
-    gap: 0.3rem;
-    padding-right: 0.5rem;
-  }
-  .rowactions button {
-    font-size: 0.75rem;
-    padding: 0.3rem 0.5rem;
-    background: #222;
-    border: 1px solid #333;
-    color: #ccc;
-    border-radius: 4px;
+  .acard {
+    min-width: 168px;
+    text-align: left;
+    background: hsl(var(--muted));
+    border: none;
+    border-radius: 8px;
+    padding: 9px 11px;
+    color: inherit;
+    font-family: inherit;
     cursor: pointer;
   }
+  .acard:hover {
+    background: hsl(var(--border));
+  }
+  .acard .top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+  }
+  .acard .meta {
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+    margin-top: 4px;
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+  }
+
+  /* ---- list ---- */
+  .listscroll {
+    flex: 1;
+    overflow: auto;
+    padding: 6px 0;
+  }
+  .cluster-h {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px 5px;
+    font-size: 10.5px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    height: 34px;
+    padding: 0 16px;
+    position: relative;
+    cursor: pointer;
+  }
+  .dense .row {
+    height: 28px;
+  }
+  .row:hover {
+    background: hsl(var(--muted));
+  }
+  .row.sel {
+    background: hsl(var(--primary) / 0.09);
+    box-shadow: inset 2px 0 0 hsl(var(--primary));
+  }
+  /* host accent color — a subtle identity rail, distinct from the selection */
+  .rail {
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    border-radius: 2px;
+  }
+  .hico {
+    display: grid;
+    place-items: center;
+    color: hsl(var(--muted-foreground));
+  }
+  .name {
+    font-weight: 500;
+    font-size: 13px;
+  }
+  .addr {
+    font-size: 12px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 5px;
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+  }
+  .chip.tag {
+    background: transparent;
+    border: 1px solid hsl(var(--border));
+  }
+  .actions {
+    display: none;
+    align-items: center;
+    gap: 1px;
+  }
+  .row:hover .actions {
+    display: flex;
+  }
+  .iconbtn {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: none;
+    border-radius: 6px;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+  }
+  .iconbtn:hover {
+    background: hsl(var(--border));
+    color: hsl(var(--foreground));
+  }
+  .star {
+    display: grid;
+    place-items: center;
+    color: hsl(var(--amber));
+  }
+
+  /* ---- empty ---- */
   .empty {
-    color: #777;
-    padding: 1rem;
-    justify-content: center;
+    margin: auto;
+    padding: 12vh 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
   }
-  button.primary {
-    background: #2b6cff;
-    border: 1px solid #2b6cff;
-    color: #fff;
-    padding: 0.45rem 0.9rem;
-    border-radius: 4px;
-    cursor: pointer;
+  .empty h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .empty p {
+    margin: 0;
+    font-size: 13px;
   }
 </style>

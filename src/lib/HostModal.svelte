@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Pencil } from '@lucide/svelte'
   import { saveHost, type Host } from './state.svelte'
 
   let { host, onclose }: { host: Host; onclose: () => void } = $props()
@@ -8,7 +9,7 @@
   let tagsText = $state(host.tags.join(', '))
   // type=color needs a valid hex; keep a local default and a separate "use color" flag.
   let useColor = $state(host.color != null)
-  let color = $state(host.color ?? '#3b82f6')
+  let color = $state(host.color ?? '#10b981')
 
   async function save() {
     draft.tags = tagsText
@@ -23,25 +24,35 @@
 
 <div class="backdrop" onclick={onclose} role="presentation">
   <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
-    <h2>{host.name ? 'Edit host' : 'New host'}</h2>
-    <label>Name<input bind:value={draft.name} placeholder="my server" /></label>
-    <label>Host<input bind:value={draft.hostname} placeholder="example.com" /></label>
-    <div class="row">
-      <label>User<input bind:value={draft.user} placeholder="root" /></label>
-      <label class="port">Port<input type="number" bind:value={draft.port} /></label>
+    <div class="mh"><Pencil size={15} /> {host.name ? `Edit host — ${host.name}` : 'New host'}</div>
+    <div class="mbody">
+      <div class="grid3">
+        <div class="field"><label for="f-name">Label</label><input id="f-name" bind:value={draft.name} placeholder="my server" /></div>
+        <div class="field"><label for="f-port">Port</label><input id="f-port" class="mono" type="number" bind:value={draft.port} /></div>
+        <div class="field">
+          <label for="f-fav">Favorite</label>
+          <label class="check"><input id="f-fav" type="checkbox" bind:checked={draft.favorite} /> Starred</label>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="f-host">Address</label><input id="f-host" class="mono" bind:value={draft.hostname} placeholder="example.com" /></div>
+        <div class="field"><label for="f-user">Username</label><input id="f-user" class="mono" bind:value={draft.user} placeholder="root" /></div>
+      </div>
+      <div class="field"><label for="f-tags">Tags</label><input id="f-tags" bind:value={tagsText} placeholder="prod, web" /></div>
+      <div class="grid2">
+        <div class="field">
+          <label for="f-color">Accent color</label>
+          <label class="check"><input id="f-color" type="checkbox" bind:checked={useColor} /> <input class="swatch" type="color" bind:value={color} disabled={!useColor} /> Use color</label>
+        </div>
+        <div class="field">
+          <label for="f-recon">Auto-reconnect</label>
+          <label class="check"><input id="f-recon" type="checkbox" bind:checked={draft.autoReconnect} /> Reconnect on drop</label>
+        </div>
+      </div>
     </div>
-    <label>Tags<input bind:value={tagsText} placeholder="prod, web" /></label>
-    <div class="row">
-      <label class="fav"><input type="checkbox" bind:checked={useColor} /> Color</label>
-      <input class="swatch" type="color" bind:value={color} disabled={!useColor} />
-      <label class="fav"><input type="checkbox" bind:checked={draft.favorite} /> Favorite</label>
-    </div>
-    <label class="fav">
-      <input type="checkbox" bind:checked={draft.autoReconnect} /> Auto-reconnect on drop
-    </label>
-    <div class="actions">
-      <button onclick={onclose}>Cancel</button>
-      <button class="primary" onclick={save} disabled={!draft.name || !draft.hostname}>Save</button>
+    <div class="mfoot">
+      <button class="btn ghost" onclick={onclose}>Cancel</button>
+      <button class="btn primary" onclick={save} disabled={!draft.name || !draft.hostname}>Save</button>
     </div>
   </div>
 </div>
@@ -50,84 +61,128 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
+    display: grid;
+    place-items: start center;
+    padding-top: 12vh;
+    z-index: 60;
   }
   .modal {
-    background: #1c1c1c;
-    padding: 1.2rem;
-    border-radius: 8px;
-    width: 320px;
+    width: 580px;
+    max-width: 92vw;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  }
+  .mh {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 14px 18px;
+    border-bottom: 1px solid hsl(var(--border));
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .mbody {
+    padding: 16px 18px;
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: 13px;
+    max-height: 52vh;
+    overflow: auto;
   }
-  h2 {
-    margin: 0 0 0.4rem;
-    font-size: 1rem;
-  }
-  label {
+  .field {
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
-    font-size: 0.75rem;
-    color: #aaa;
+    gap: 6px;
   }
-  input {
-    padding: 0.4rem;
-    background: #111;
-    border: 1px solid #333;
-    color: #eee;
-    border-radius: 4px;
+  .field label {
+    font-size: 11.5px;
+    color: hsl(var(--muted-foreground));
   }
-  /* Native color input: no dark fill masking the swatch. */
+  .field input {
+    background: hsl(var(--muted));
+    border: 1px solid hsl(var(--border));
+    border-radius: 7px;
+    padding: 8px 10px;
+    color: inherit;
+    outline: none;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .field input:focus {
+    border-color: hsl(var(--ring) / 0.6);
+  }
+  .grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 13px;
+  }
+  .grid3 {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 13px;
+  }
+  .check {
+    flex-direction: row !important;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    color: hsl(var(--foreground)) !important;
+    font-size: 13px !important;
+  }
+  .check input[type='checkbox'] {
+    width: auto;
+    background: none;
+    padding: 0;
+  }
   .swatch {
     padding: 2px;
-    width: 46px;
-    height: 32px;
+    width: 40px;
+    height: 28px;
     background: none;
+    border: 1px solid hsl(var(--border));
+    border-radius: 6px;
     cursor: pointer;
   }
   .swatch:disabled {
     opacity: 0.4;
     cursor: default;
   }
-  .row {
-    display: flex;
-    gap: 0.6rem;
-  }
-  .row label {
-    flex: 1;
-  }
-  .port {
-    max-width: 90px;
-  }
-  .fav {
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-start;
-  }
-  .actions {
+  .mfoot {
+    padding: 13px 18px;
+    border-top: 1px solid hsl(var(--border));
     display: flex;
     justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 0.4rem;
+    gap: 8px;
   }
-  button {
-    padding: 0.4rem 0.9rem;
-    border-radius: 4px;
-    border: 1px solid #333;
-    background: #222;
-    color: #eee;
+  .btn {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 7px;
+    background: hsl(var(--muted));
+    color: inherit;
+    font-size: 13px;
+    font-family: inherit;
     cursor: pointer;
   }
-  .primary {
-    background: #2b6cff;
-    border-color: #2b6cff;
+  .btn:hover {
+    background: hsl(var(--border));
   }
-  button:disabled {
+  .btn.ghost {
+    background: transparent;
+  }
+  .btn.primary {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    font-weight: 600;
+  }
+  .btn.primary:hover {
+    filter: brightness(1.08);
+  }
+  .btn:disabled {
     opacity: 0.5;
     cursor: default;
   }

@@ -42,7 +42,7 @@ Side panel supports **nested folders/groups**, not just a flat list.
 - **Multiple saved views** so only the relevant subset of hosts shows.
 - **Global fuzzy search** across all hosts + **command palette (Cmd+K)**.
 
-**Footer:** sticky bottom bar (task-bar style) showing active sessions / quick status.
+**Footer:** sticky bottom bar showing *global* status only — active-session count, theme, and the `Cmd+K` hint. (Refined during the design pass: the original "task-bar style" per-session strip was cut because it duplicated the tab bar; per-session liveness lives on the tab-bar status dots, the single source of truth. See design-spec §2.)
 
 ### Live connection stepper
 When connecting, show a **live, real** pipeline of steps reflecting the actual connection state — e.g. Connecting → Key (id_rsa) / Password → Verification code (MFA) — driven by the session's real configuration and progress, not a mock animation.
