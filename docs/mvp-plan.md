@@ -17,7 +17,8 @@ Build **one phase at a time**. At the start of each phase, restate the plan and 
 - Reconnect / auto-reconnect on drop.
 - `Cmd+F` in-terminal search.
 - Global fuzzy search + `Cmd+K` command palette.
-- **Exit criteria:** can save, organize, open, and reconnect real hosts in tabs. (Splits moved to their own track — `docs/splits.md`.)
+- **App shell + design system** (added in the design pass after `docs/design-spec.md` / `docs/ssh-client-mockup.html`): the shared CSS-variable token system (`src/app.css` `:root`, dark-first — see design-spec §1.1), the left sidebar frame + always-visible vault-status pill, the slim global footer, and the status-dot language (green connected / blue connecting / red disconnected / grey idle) with the host accent color as a separate 2px tab top-rule + host-row rail. Sidebar sections beyond **Hosts** (Keys, Snippets, Port Forwards, History, the Groups tree) render as **inert dimmed placeholders** — the shell reserves their space, but each is owned and wired up by its own later phase.
+- **Exit criteria:** can save, organize, open, and reconnect real hosts in tabs, in a shell that matches the design spec. (Splits moved to their own track — `docs/splits.md`.)
 
 ## Phase 2 — Auth, keys, security (MVP)
 - Key manager: import + in-app generation (ed25519, RSA, ECDSA).

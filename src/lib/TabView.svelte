@@ -31,7 +31,7 @@
     min-height: 0;
     display: grid;
     gap: 2px;
-    background: #000;
+    background: hsl(var(--border));
   }
   .grid.single {
     grid-template-columns: 1fr;

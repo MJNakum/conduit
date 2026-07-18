@@ -1,7 +1,18 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import { listen } from '@tauri-apps/api/event'
-  import { LayoutGrid, X } from '@lucide/svelte'
+  import {
+    Terminal as TerminalIcon,
+    Server,
+    KeyRound,
+    Zap,
+    ArrowRightLeft,
+    History,
+    ChevronRight,
+    Lock,
+    Plus,
+    X,
+  } from '@lucide/svelte'
   import HostList from './lib/HostList.svelte'
   import TabView from './lib/TabView.svelte'
   import Palette from './lib/Palette.svelte'
@@ -19,6 +30,16 @@
   } from './lib/state.svelte'
 
   let paletteOpen = $state(false)
+
+  // Sidebar sections. Only Hosts is wired now — Keys/Snippets/Port Forwards/
+  // History and the Groups tree are inert placeholders for their later phases
+  // (see docs/mvp-plan.md), shown so the shell has correct proportions.
+  const laterSections = [
+    { label: 'Keys', icon: KeyRound },
+    { label: 'Snippets', icon: Zap },
+    { label: 'Port Forwards', icon: ArrowRightLeft },
+    { label: 'History', icon: History },
+  ]
 
   onMount(() => {
     loadHosts()
@@ -50,32 +71,39 @@
     window.dispatchEvent(new Event('resize'))
   }
 
-  // Aggregate a tab's panes into one status color: in-progress > connected >
-  // failed > idle.
-  function tabColor(tab: Tab): string {
+  // Aggregate a tab's panes into one status-language color (dot): in-progress >
+  // connected > failed > idle. Decoupled from the host's accent color.
+  function tabDot(tab: Tab): string {
     const phases = tab.panes.map((p) => p.phase)
-    if (phases.some((p) => p === 'connecting' || p === 'authenticating')) return '#6cf'
-    if (phases.some((p) => p === 'connected')) return '#3c3'
-    if (phases.some((p) => p === 'error' || p === 'disconnected')) return '#a33'
-    return '#555'
+    if (phases.some((p) => p === 'connecting' || p === 'authenticating'))
+      return 'hsl(var(--connecting))'
+    if (phases.some((p) => p === 'connected')) return 'hsl(var(--primary))'
+    if (phases.some((p) => p === 'error' || p === 'disconnected'))
+      return 'hsl(var(--destructive))'
+    return 'hsl(var(--muted-foreground))'
   }
 </script>
 
 <main>
-  <nav class="tabs">
-    <button class="tab" class:active={ui.active === 'home'} onclick={() => activate('home')}>
-      <LayoutGrid size={15} /> All Sessions
+  <!-- TAB BAR — dot = status only; the thin top rule is the host's accent color -->
+  <nav class="tabbar">
+    <button
+      class="tab pinned"
+      class:active={ui.active === 'home'}
+      onclick={() => activate('home')}
+    >
+      <TerminalIcon size={15} /> <span>Sessions</span>
     </button>
     {#each ui.tabs as tab (tab.key)}
       {@const host = tabHost(tab)}
-      {@const Icon = host ? hostIcon(host) : LayoutGrid}
+      {@const Icon = host ? hostIcon(host) : TerminalIcon}
       <button
         class="tab"
         class:active={ui.active === tab.key}
-        style:border-bottom-color={host?.color ?? undefined}
         onclick={() => activate(tab.key)}
       >
-        <span class="pdot" style:background={tabColor(tab)}></span>
+        {#if host?.color}<span class="accent" style:background={host.color}></span>{/if}
+        <span class="pdot" style:background={tabDot(tab)}></span>
         <Icon size={15} />
         <span>{host?.name ?? 'New tab'}{tab.panes.length > 1 ? ` (${tab.panes.length})` : ''}</span>
         <span
@@ -88,23 +116,63 @@
         ><X size={14} /></span>
       </button>
     {/each}
+    <button class="plus" aria-label="New tab" onclick={() => activate('home')}>
+      <Plus size={15} />
+    </button>
   </nav>
 
   <div class="body">
-    <div class="page" class:hidden={ui.active !== 'home'}>
-      <HostList onopen={open} />
-    </div>
-    {#each ui.tabs as tab (tab.key)}
-      <div class="page" class:hidden={ui.active !== tab.key}>
-        <TabView {tab} />
+    <!-- SIDEBAR — section switcher + vault pill (local-first trust anchor) -->
+    <aside class="sidebar">
+      <div class="side-scroll">
+        <button
+          class="side-item"
+          class:active={ui.active === 'home'}
+          onclick={() => activate('home')}
+        >
+          <Server size={15} /> Hosts
+        </button>
+        {#each laterSections as s}
+          {@const SIcon = s.icon}
+          <div class="side-item soon" aria-disabled="true" title="Coming in a later phase">
+            <SIcon size={15} /> {s.label}
+          </div>
+        {/each}
+        <div class="side-head">Groups</div>
+        <div class="side-item soon" aria-disabled="true" title="Coming in a later phase">
+          <ChevronRight size={15} /> Production
+        </div>
+        <div class="side-item soon" aria-disabled="true" title="Coming in a later phase">
+          <ChevronRight size={15} /> Clients
+        </div>
       </div>
-    {/each}
+      <div class="vault">
+        <Lock size={14} color="hsl(var(--primary))" /> Vault unlocked
+        <span class="mono kbd">⌘L</span>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div class="main">
+      <div class="page" class:hidden={ui.active !== 'home'}>
+        <HostList onopen={open} />
+      </div>
+      {#each ui.tabs as tab (tab.key)}
+        <div class="page" class:hidden={ui.active !== tab.key}>
+          <TabView {tab} />
+        </div>
+      {/each}
+    </div>
   </div>
 
+  <!-- FOOTER — slim global status only (per-session liveness lives on tab dots) -->
   <footer>
-    <span>{activeCount()} active</span>
-    {#if ui.tabs.length}<span class="dim">· {ui.tabs.length} tab{ui.tabs.length > 1 ? 's' : ''}</span>{/if}
-    <span class="hint">⌘K palette · ⌘F find</span>
+    <span>{activeCount()} session{activeCount() === 1 ? '' : 's'} active</span>
+    <span class="spacer"></span>
+    <span>Theme: Dark</span>
+    <span>·</span>
+    <span class="mono">⌘K</span>
+    <span>command palette</span>
   </footer>
 
   {#if paletteOpen}
@@ -117,50 +185,170 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    background: #111;
-    color: #eee;
-    font-family: system-ui, sans-serif;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
-  .tabs {
+
+  /* ---- tab bar ---- */
+  .tabbar {
+    height: 38px;
     display: flex;
-    background: #0c0c0c;
-    border-bottom: 1px solid #222;
+    align-items: flex-end;
+    gap: 2px;
+    padding: 0 8px;
+    background: hsl(var(--background));
+    border-bottom: 1px solid hsl(var(--border));
     overflow-x: auto;
   }
   .tab {
+    height: 30px;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.55rem 0.9rem;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: #bbb;
+    gap: 8px;
+    padding: 0 12px;
+    border: 1px solid hsl(var(--border));
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    background: hsl(var(--card));
+    color: hsl(var(--muted-foreground));
     cursor: pointer;
     white-space: nowrap;
-    font-size: 0.85rem;
+    font-size: 12.5px;
+    position: relative;
   }
   .tab.active {
-    color: #fff;
-    background: #161616;
-    border-bottom-color: #2b6cff;
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
+  }
+  .tab.pinned {
+    background: transparent;
+    border-color: transparent;
+  }
+  .tab.pinned.active {
+    background: hsl(var(--muted));
+  }
+  /* accent = host color, a thin top rule (identity), never the status dot */
+  .tab .accent {
+    position: absolute;
+    top: 0;
+    left: 10px;
+    right: 10px;
+    height: 2px;
+    border-radius: 2px;
   }
   .pdot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
+    flex: none;
   }
   .close {
-    color: #777;
-    font-size: 1rem;
-    line-height: 1;
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    color: hsl(var(--muted-foreground));
+    opacity: 0;
+  }
+  .tab:hover .close {
+    opacity: 0.6;
   }
   .close:hover {
-    color: #f66;
+    opacity: 1;
+    background: hsl(var(--border));
   }
+  .plus {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border-radius: 6px;
+    background: none;
+    border: none;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+  }
+  .plus:hover {
+    background: hsl(var(--muted));
+  }
+
+  /* ---- body / sidebar ---- */
   .body {
     flex: 1;
     min-height: 0;
+    display: flex;
+  }
+  .sidebar {
+    width: 236px;
+    flex: none;
+    background: hsl(var(--card));
+    border-right: 1px solid hsl(var(--border));
+    display: flex;
+    flex-direction: column;
+  }
+  .side-scroll {
+    flex: 1;
+    overflow: auto;
+    padding: 8px;
+  }
+  .side-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 6px 9px;
+    border: none;
+    background: none;
+    border-radius: 6px;
+    color: hsl(var(--muted-foreground));
+    font-size: 12.5px;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .side-item:hover {
+    background: hsl(var(--muted));
+  }
+  .side-item.active {
+    background: hsl(var(--primary) / 0.1);
+    color: hsl(var(--foreground));
+  }
+  .side-item.soon {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .side-item.soon:hover {
+    background: none;
+  }
+  .side-head {
+    font-size: 10px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+    padding: 14px 9px 5px;
+    opacity: 0.65;
+  }
+  .vault {
+    margin: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: hsl(var(--muted));
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 12px;
+  }
+  .kbd {
+    margin-left: auto;
+    font-size: 10px;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* ---- main content ---- */
+  .main {
+    flex: 1;
+    min-width: 0;
     position: relative;
   }
   .page {
@@ -173,23 +361,21 @@
   .page.hidden {
     display: none;
   }
+
+  /* ---- footer ---- */
   footer {
-    padding: 0.3rem 0.9rem;
-    background: #0c0c0c;
-    border-top: 1px solid #222;
-    font-size: 0.75rem;
-    color: #9c9;
-  }
-  .dim {
-    color: #777;
-  }
-  footer {
+    height: 26px;
+    flex: none;
     display: flex;
-    gap: 0.6rem;
     align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    background: hsl(var(--card));
+    border-top: 1px solid hsl(var(--border));
+    font-size: 11.5px;
+    color: hsl(var(--muted-foreground));
   }
-  .hint {
-    margin-left: auto;
-    color: #666;
+  .spacer {
+    flex: 1;
   }
 </style>
