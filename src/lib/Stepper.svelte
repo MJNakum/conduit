@@ -1,5 +1,8 @@
 <script lang="ts">
-  // Driven by real ssh://state events — never a faked animation.
+  import { Check, X } from '@lucide/svelte'
+  // Driven by real ssh://state events — never a faked animation. Only the three
+  // phases the backend actually emits appear; richer steps (jump host, host-key,
+  // MFA) arrive with their Phase 2 events.
   let { phase, error }: { phase: string; error: string } = $props()
 
   const steps = ['connecting', 'authenticating', 'connected']
@@ -8,18 +11,27 @@
     authenticating: 'Authenticating',
     connected: 'Connected',
   }
-  // Index of the current phase in the pipeline (-1 before it starts).
   const idx = $derived(steps.indexOf(phase))
   const failed = $derived(phase === 'error' || phase === 'disconnected')
 </script>
 
 <div class="stepper">
   {#each steps as step, i}
-    <div class="step" class:done={idx > i} class:active={idx === i} class:failed={failed && idx < i}>
-      <span class="bullet"></span>
-      <span class="label">{labels[step]}</span>
+    {@const done = idx > i}
+    {@const active = idx === i}
+    {@const failhere = failed && idx <= i}
+    <div class="step" class:done class:active class:failed={failhere}>
+      <span class="si">
+        {#if done}
+          <Check size={12} />
+        {:else if failhere}
+          <X size={12} />
+        {:else if active}
+          <span class="spin"></span>
+        {/if}
+      </span>
+      <span class="lbl">{labels[step]}</span>
     </div>
-    {#if i < steps.length - 1}<span class="line" class:done={idx > i}></span>{/if}
   {/each}
 </div>
 {#if failed}
@@ -28,63 +40,66 @@
 
 <style>
   .stepper {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
+    width: 240px;
   }
   .step {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    color: #666;
+    gap: 13px;
+    padding: 7px 0;
   }
-  .bullet {
-    width: 10px;
-    height: 10px;
+  .si {
+    width: 20px;
+    height: 20px;
+    flex: none;
+    display: grid;
+    place-items: center;
     border-radius: 50%;
-    background: #333;
-    border: 2px solid #444;
+    border: 1.5px solid hsl(var(--border));
+    color: hsl(var(--muted-foreground));
   }
-  .step.active .bullet {
-    background: #2b6cff;
-    border-color: #2b6cff;
-    animation: pulse 1s infinite;
+  .step.done .si {
+    background: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
   }
-  .step.done {
-    color: #7c7;
+  .step.active .si {
+    border-color: hsl(var(--connecting));
+    color: hsl(var(--connecting));
   }
-  .step.done .bullet {
-    background: #3c3;
-    border-color: #3c3;
+  .step.failed .si {
+    background: hsl(var(--destructive));
+    border-color: hsl(var(--destructive));
+    color: #fff;
   }
-  .step.active {
-    color: #6cf;
+  .lbl {
+    font-size: 13px;
   }
-  .step.failed .bullet {
-    background: #a33;
-    border-color: #a33;
+  .step.done:not(.active) .lbl,
+  .step:not(.done):not(.active):not(.failed) .lbl {
+    color: hsl(var(--muted-foreground));
   }
-  .line {
-    width: 32px;
-    height: 2px;
-    background: #333;
+  .spin {
+    width: 12px;
+    height: 12px;
+    border: 2px solid hsl(var(--connecting) / 0.3);
+    border-top-color: hsl(var(--connecting));
+    border-radius: 50%;
+    animation: sp 0.7s linear infinite;
   }
-  .line.done {
-    background: #3c3;
+  @keyframes sp {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .msg {
-    text-align: center;
-    color: #f66;
-    font-size: 0.85rem;
+    margin: 10px 0 0;
+    font-size: 12px;
+    color: hsl(var(--destructive));
   }
-  @keyframes pulse {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.4;
+  @media (prefers-reduced-motion: reduce) {
+    .spin {
+      animation: none;
     }
   }
 </style>

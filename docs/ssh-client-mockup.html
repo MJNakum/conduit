@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modern SSH Client — Mockup</title>
+<style>
+  :root{
+    --background:222 16% 8%; --card:224 13% 11%; --popover:224 14% 10%;
+    --muted:224 10% 15%; --muted-foreground:220 8% 58%; --foreground:210 18% 90%;
+    --border:224 10% 17%; --primary:160 84% 42%; --primary-foreground:224 14% 8%;
+    --destructive:0 72% 55%; --ring:160 84% 42%;
+    --connecting:210 90% 58%; --amber:38 92% 55%; --violet:265 70% 66%;
+    --radius:8px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:hsl(var(--background));color:hsl(var(--foreground));
+    font-family:"Inter",-apple-system,system-ui,sans-serif;font-size:13px;line-height:1.45;
+    -webkit-font-smoothing:antialiased;overflow:hidden;
+  }
+  .mono{font-family:"JetBrains Mono","SF Mono",ui-monospace,monospace}
+  .muted{color:hsl(var(--muted-foreground))}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  .i{width:16px;height:16px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .i.sm{width:14px;height:14px}
+
+  /* status dot — green connected · blue connecting · red disconnected · grey idle */
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .dot.on{background:hsl(var(--primary))}
+  .dot.connecting{background:hsl(var(--connecting))}
+  .dot.off{background:hsl(var(--destructive))}
+  .dot.idle{background:hsl(var(--muted-foreground));opacity:.6}
+
+  /* ---- screen switcher (mockup only) ---- */
+  .switcher{position:fixed;top:0;left:0;right:0;z-index:100;height:38px;display:flex;align-items:center;gap:3px;
+    padding:0 12px;background:hsl(var(--popover));border-bottom:1px solid hsl(var(--border));overflow-x:auto}
+  .switcher b{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:hsl(var(--muted-foreground));margin-right:8px;white-space:nowrap}
+  .switcher button{padding:4px 10px;border-radius:6px;font-size:12px;color:hsl(var(--muted-foreground));white-space:nowrap}
+  .switcher button:hover{background:hsl(var(--muted));color:hsl(var(--foreground))}
+  .switcher button.active{background:hsl(var(--primary)/.14);color:hsl(var(--primary))}
+
+  /* ---- app frame ---- */
+  .app{position:fixed;top:38px;left:0;right:0;bottom:0;display:flex;flex-direction:column}
+  .tabbar{height:38px;display:flex;align-items:flex-end;gap:2px;padding:0 8px;background:hsl(var(--background));border-bottom:1px solid hsl(var(--border))}
+  .tab{height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:8px 8px 0 0;
+    background:hsl(var(--card));border:1px solid hsl(var(--border));border-bottom:none;font-size:12.5px;position:relative;color:hsl(var(--muted-foreground))}
+  .tab.active{background:hsl(var(--muted));color:hsl(var(--foreground))}
+  .tab .accent{position:absolute;top:0;left:10px;right:10px;height:2px;border-radius:2px}
+  .tab .x{display:grid;place-items:center;opacity:0;width:16px;height:16px;border-radius:4px;margin-left:2px}
+  .tab:hover .x{opacity:.6}
+  .tab .x:hover{opacity:1;background:hsl(var(--border))}
+  .tab.pinned{background:transparent;border-color:transparent}
+  .tab.pinned.active{background:hsl(var(--muted))}
+  .plus{width:28px;height:28px;display:grid;place-items:center;border-radius:6px;color:hsl(var(--muted-foreground))}
+  .plus:hover{background:hsl(var(--muted))}
+
+  .body{flex:1;display:flex;min-height:0}
+  .sidebar{width:236px;background:hsl(var(--card));border-right:1px solid hsl(var(--border));display:flex;flex-direction:column}
+  .side-scroll{flex:1;overflow:auto;padding:8px 8px}
+  .side-item{display:flex;align-items:center;gap:10px;padding:6px 9px;border-radius:6px;color:hsl(var(--muted-foreground));font-size:12.5px}
+  .side-item:hover{background:hsl(var(--muted))}
+  .side-item.active{background:hsl(var(--primary)/.1);color:hsl(var(--foreground))}
+  .side-head{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:hsl(var(--muted-foreground));padding:14px 9px 5px;opacity:.65}
+  .tree-child{padding-left:22px}.tree-child2{padding-left:38px}
+  .vault{margin:8px;padding:8px 10px;border-radius:8px;background:hsl(var(--muted));display:flex;align-items:center;gap:9px;font-size:12px}
+
+  .main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+  .footer{height:26px;background:hsl(var(--card));border-top:1px solid hsl(var(--border));display:flex;align-items:center;gap:10px;padding:0 12px;font-size:11.5px;color:hsl(var(--muted-foreground))}
+
+  /* ---- host list ---- */
+  .toolbar{height:46px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid hsl(var(--border))}
+  .seg{display:flex;background:hsl(var(--muted));border-radius:7px;padding:2px}
+  .seg button{padding:4px 11px;border-radius:5px;font-size:12px;color:hsl(var(--muted-foreground))}
+  .seg button.active{background:hsl(var(--card));color:hsl(var(--foreground));box-shadow:0 1px 2px rgba(0,0,0,.25)}
+  .search{flex:1;max-width:320px;display:flex;align-items:center;gap:8px;background:hsl(var(--muted));border:1px solid transparent;border-radius:7px;padding:6px 10px}
+  .search:focus-within{border-color:hsl(var(--ring)/.5)}
+  .search input{background:none;border:none;outline:none;color:inherit;font-size:12.5px;flex:1}
+  .chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:5px;font-size:11px;background:hsl(var(--muted));color:hsl(var(--muted-foreground))}
+  .chip.tag{background:transparent;border:1px solid hsl(var(--border));color:hsl(var(--muted-foreground))}
+  .iconbtn{width:28px;height:28px;display:grid;place-items:center;border-radius:6px;color:hsl(var(--muted-foreground))}
+  .iconbtn:hover{background:hsl(var(--muted));color:hsl(var(--foreground))}
+  .btn{padding:7px 12px;border-radius:7px;background:hsl(var(--muted));font-size:12.5px;display:inline-flex;align-items:center;gap:7px}
+  .btn:hover{background:hsl(var(--border))}
+  .btn.primary{background:hsl(var(--primary));color:hsl(var(--primary-foreground));font-weight:600}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .btn.ghost{background:transparent}
+  .spacer{flex:1}
+
+  .listscroll{flex:1;overflow:auto;padding:6px 0}
+  .cluster-h{display:flex;align-items:center;gap:8px;padding:12px 16px 5px;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:hsl(var(--muted-foreground))}
+  .activebar{display:flex;gap:8px;padding:10px 12px;border-bottom:1px solid hsl(var(--border));overflow-x:auto}
+  .acard{min-width:168px;background:hsl(var(--muted));border-radius:8px;padding:9px 11px}
+  .acard .top{display:flex;align-items:center;gap:8px;font-size:12.5px}
+  .acard .meta{font-size:11px;color:hsl(var(--muted-foreground));margin-top:4px}
+
+  .row{display:flex;align-items:center;gap:11px;padding:0 16px;height:34px;position:relative;cursor:pointer}
+  .row:hover{background:hsl(var(--muted))}
+  .row.sel{background:hsl(var(--primary)/.09);box-shadow:inset 2px 0 0 hsl(var(--primary))}
+  .row .hico{color:hsl(var(--muted-foreground));display:grid;place-items:center}
+  .row .name{font-weight:500;font-size:13px}
+  .row .addr{font-size:12px}
+  .row .actions{display:none;align-items:center;gap:1px}
+  .row:hover .actions{display:flex}
+  .star{color:hsl(var(--amber))}
+  .when{font-size:11.5px;color:hsl(var(--muted-foreground));min-width:64px;text-align:right}
+
+  /* ---- terminal ---- */
+  .panehead{height:28px;display:flex;align-items:center;gap:9px;padding:0 11px;background:hsl(var(--card));border-bottom:1px solid hsl(var(--border));font-size:12px}
+  .term{flex:1;background:#0a0e13;padding:12px 14px;overflow:auto;font-family:"JetBrains Mono",monospace;font-size:12.5px;line-height:1.55}
+  .term .p{color:hsl(var(--primary))}.term .u{color:hsl(var(--connecting))}.term .g{color:hsl(var(--muted-foreground))}
+  .cursor{background:hsl(var(--primary));color:#0a0e13}
+  .findbar{position:absolute;top:36px;right:16px;display:flex;align-items:center;gap:6px;background:hsl(var(--popover));border:1px solid hsl(var(--border));border-radius:8px;padding:6px 8px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:20}
+  .findbar input{background:hsl(var(--muted));border:none;outline:none;color:inherit;border-radius:5px;padding:4px 8px;width:140px;font-size:12px}
+
+  /* ---- splits ---- */
+  .splitwrap{flex:1;display:flex;gap:6px;padding:6px;background:hsl(var(--background))}
+  .spane{flex:1;display:flex;flex-direction:column;border:1px solid hsl(var(--border));border-radius:8px;overflow:hidden;position:relative}
+  .spane.activepane{border-color:hsl(var(--primary))}
+  .dropzone{position:absolute;inset:0;pointer-events:none}
+  .dz{position:absolute;background:hsl(var(--primary)/.18);border:1.5px dashed hsl(var(--primary)/.6);display:grid;place-items:center;color:hsl(var(--primary));font-size:11px}
+
+  /* ---- overlays ---- */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;display:grid;place-items:start center;padding-top:12vh}
+  .palette{width:560px;background:hsl(var(--popover));border:1px solid hsl(var(--border));border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.55);overflow:hidden}
+  .palette .pin{display:flex;align-items:center;gap:11px;padding:14px 16px;border-bottom:1px solid hsl(var(--border))}
+  .palette .pin input{background:none;border:none;outline:none;color:inherit;font-size:15px;flex:1}
+  .presult{display:flex;align-items:center;gap:11px;padding:9px 16px;font-size:13px}
+  .presult .txt{display:flex;align-items:center;gap:8px}
+  .presult.on{background:hsl(var(--primary)/.1);box-shadow:inset 2px 0 0 hsl(var(--primary))}
+  .presult .k{margin-left:auto;font-size:11px;color:hsl(var(--muted-foreground));display:flex;gap:4px;align-items:center}
+  .kbd{font-family:"JetBrains Mono",monospace;font-size:10.5px;padding:1px 5px;border-radius:4px;background:hsl(var(--muted));border:1px solid hsl(var(--border))}
+  .pgroup{padding:9px 16px 3px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:hsl(var(--muted-foreground))}
+
+  .modal{width:580px;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.55);overflow:hidden}
+  .modal .mh{padding:14px 18px;border-bottom:1px solid hsl(var(--border));font-size:14px;font-weight:600;display:flex;align-items:center;gap:9px}
+  .modal .mtabs{display:flex;gap:2px;padding:6px 12px 0;border-bottom:1px solid hsl(var(--border))}
+  .mtab{padding:8px 12px;font-size:12.5px;color:hsl(var(--muted-foreground));border-bottom:2px solid transparent}
+  .mtab.active{color:hsl(var(--foreground));border-color:hsl(var(--primary))}
+  .mbody{padding:16px 18px;display:flex;flex-direction:column;gap:13px;max-height:52vh;overflow:auto}
+  .field{display:flex;flex-direction:column;gap:6px}
+  .field label{font-size:11.5px;color:hsl(var(--muted-foreground))}
+  .field input,.field select{background:hsl(var(--muted));border:1px solid hsl(var(--border));border-radius:7px;padding:8px 10px;color:inherit;outline:none;font-size:13px;font-family:inherit}
+  .field input:focus{border-color:hsl(var(--ring)/.6)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+  .grid3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:13px}
+  .mfoot{padding:13px 18px;border-top:1px solid hsl(var(--border));display:flex;justify-content:flex-end;gap:8px}
+
+  /* stepper */
+  .stepwrap{flex:1;display:grid;place-items:center;background:hsl(var(--background))}
+  .stepper{width:440px}
+  .stepper .title{font-size:15px;font-weight:600;margin-bottom:3px}
+  .stepper .sub{font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:20px}
+  .step{display:flex;gap:13px;padding:7px 0}
+  .step .si{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;border:1.5px solid hsl(var(--border));color:hsl(var(--muted-foreground));margin-top:1px}
+  .step.done .si{background:hsl(var(--primary));border-color:hsl(var(--primary));color:hsl(var(--primary-foreground))}
+  .step.active .si{border-color:hsl(var(--connecting));color:hsl(var(--connecting))}
+  .step .lbl{font-size:13px}
+  .step .det{font-size:11.5px;color:hsl(var(--muted-foreground));margin-top:2px}
+  .step.pending .lbl{color:hsl(var(--muted-foreground))}
+  .spin{width:12px;height:12px;border:2px solid hsl(var(--connecting)/.3);border-top-color:hsl(var(--connecting));border-radius:50%;animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .codebox{display:flex;gap:6px;margin-top:9px}
+  .codebox input{width:34px;height:40px;text-align:center;font-size:16px;background:hsl(var(--muted));border:1px solid hsl(var(--border));border-radius:7px;color:inherit;font-family:"JetBrains Mono",monospace}
+
+  /* alert */
+  .alert{width:480px;background:hsl(var(--card));border:1px solid hsl(var(--destructive)/.5);border-radius:12px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.55)}
+  .alert .ah{padding:16px 18px;display:flex;gap:13px;align-items:flex-start}
+  .alert .warnico{width:34px;height:34px;border-radius:8px;background:hsl(var(--destructive)/.13);color:hsl(var(--destructive));display:grid;place-items:center;flex:none}
+  .fp{display:flex;gap:10px;margin:12px 18px;font-size:11.5px}
+  .fpcol{flex:1;background:hsl(var(--muted));border-radius:8px;padding:10px}
+  .fpcol.old{opacity:.65}
+  .fpcol.new{border:1px solid hsl(var(--destructive)/.5)}
+
+  /* tables */
+  .dual{flex:1;display:flex;min-height:0}
+  .fpane{flex:1;display:flex;flex-direction:column;border-right:1px solid hsl(var(--border))}
+  .crumb{height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid hsl(var(--border));font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  thead th{text-align:left;font-weight:500;font-size:11px;color:hsl(var(--muted-foreground));padding:8px 12px;border-bottom:1px solid hsl(var(--border));position:sticky;top:0;background:hsl(var(--card))}
+  tbody td{padding:7px 12px;border-bottom:1px solid hsl(var(--border)/.5)}
+  tbody tr:hover{background:hsl(var(--muted))}
+  td .cell{display:flex;align-items:center;gap:8px}
+  .tray{height:118px;border-top:1px solid hsl(var(--border));background:hsl(var(--card))}
+  .tray .th{padding:9px 14px;font-size:12px;font-weight:600;border-bottom:1px solid hsl(var(--border))}
+  .prog{height:5px;border-radius:3px;background:hsl(var(--muted));overflow:hidden;margin-top:5px}
+  .prog > div{height:100%;background:hsl(var(--primary))}
+  .badge{padding:1px 7px;border-radius:5px;font-size:10.5px;font-weight:600;letter-spacing:.02em}
+  .b-local{background:hsl(var(--connecting)/.15);color:hsl(var(--connecting))}
+  .b-remote{background:hsl(var(--violet)/.16);color:hsl(var(--violet))}
+  .b-dyn{background:hsl(var(--amber)/.15);color:hsl(var(--amber))}
+  .b-key{background:hsl(var(--primary)/.14);color:hsl(var(--primary))}
+  .switch{width:34px;height:19px;border-radius:20px;background:hsl(var(--muted));position:relative;flex:none;display:inline-block}
+  .switch.on{background:hsl(var(--primary))}
+  .switch i{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;transition:.15s}
+  .switch.on i{left:17px}
+
+  .page{flex:1;overflow:auto}
+  .phead{padding:16px 18px 8px;display:flex;align-items:center;gap:10px}
+  .phead h2{font-size:16px;font-weight:600}
+  .phead p{font-size:12.5px;color:hsl(var(--muted-foreground));margin-top:3px}
+  .hidden{display:none}
+
+  .bcast{background:hsl(var(--amber)/.1);border-top:1px solid hsl(var(--amber)/.35);padding:9px 14px;display:flex;align-items:center;gap:10px;font-size:12.5px}
+  .bcast .lbl{color:hsl(var(--amber));font-weight:600;display:flex;align-items:center;gap:8px}
+</style>
+</head>
+<body>
+
+<!-- ICON DEFS (Lucide-style stroke icons) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="ic-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><line x1="7" y1="7.5" x2="7" y2="7.5"/><line x1="7" y1="16.5" x2="7" y2="16.5"/></symbol>
+  <symbol id="ic-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+  <symbol id="ic-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3"/><line x1="13" y1="15" x2="16" y2="15"/></symbol>
+  <symbol id="ic-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/></symbol>
+  <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></symbol>
+  <symbol id="ic-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 000 8.4M16.2 7.8a6 6 0 010 8.4M5 5a9.5 9.5 0 000 14M19 5a9.5 9.5 0 010 14"/></symbol>
+  <symbol id="ic-key" viewBox="0 0 24 24"><circle cx="8" cy="8" r="4"/><path d="M10.8 10.8L20 20M17 17l2-2M15 15l2-2"/></symbol>
+  <symbol id="ic-zap" viewBox="0 0 24 24"><path d="M13 3L4 14h7l-1 7 9-11h-7z"/></symbol>
+  <symbol id="ic-forward" viewBox="0 0 24 24"><path d="M17 3l4 4-4 4"/><path d="M21 7H8a4 4 0 00-4 4v1"/><path d="M7 21l-4-4 4-4"/><path d="M3 17h13a4 4 0 004-4v-1"/></symbol>
+  <symbol id="ic-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="ic-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></symbol>
+  <symbol id="ic-chevron-r" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="ic-chevron-d" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="ic-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
+  <symbol id="ic-star" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6-5.4-2.9-5.4 2.9 1-6L3.2 9.5l6.1-.9z"/></symbol>
+  <symbol id="ic-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16" y1="16" x2="21" y2="21"/></symbol>
+  <symbol id="ic-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+  <symbol id="ic-split" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/></symbol>
+  <symbol id="ic-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><line x1="14" y1="6" x2="18" y2="10"/></symbol>
+  <symbol id="ic-files" viewBox="0 0 24 24"><path d="M8 3h7l5 5v11a2 2 0 01-2 2H8a2 2 0 01-2-2V5a2 2 0 012-2z"/><path d="M15 3v5h5"/></symbol>
+  <symbol id="ic-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></symbol>
+  <symbol id="ic-x" viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></symbol>
+  <symbol id="ic-alert" viewBox="0 0 24 24"><path d="M12 3l9 16H3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17"/></symbol>
+  <symbol id="ic-file" viewBox="0 0 24 24"><path d="M7 3h7l4 4v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M14 3v4h4"/></symbol>
+  <symbol id="ic-laptop" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="10" rx="1.5"/><path d="M2 19h20l-1-2H3z"/></symbol>
+  <symbol id="ic-broadcast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5"/><path d="M6 6a8 8 0 000 12M18 6a8 8 0 010 12"/></symbol>
+  <symbol id="ic-hardware" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="9" y1="7" x2="15" y2="7"/><circle cx="12" cy="14" r="2.5"/></symbol>
+</svg>
+
+<div class="switcher">
+  <b>Screens</b>
+  <button data-s="hosts" class="active">Host list</button>
+  <button data-s="palette">Cmd+K palette</button>
+  <button data-s="stepper">Connection stepper</button>
+  <button data-s="terminal">Terminal + Find</button>
+  <button data-s="split">Split panes</button>
+  <button data-s="broadcast">Broadcast</button>
+  <button data-s="editor">Connection editor</button>
+  <button data-s="hostkey">Host-key changed</button>
+  <button data-s="keys">Key manager</button>
+  <button data-s="sftp">SFTP browser</button>
+  <button data-s="forwards">Port forwarding</button>
+</div>
+
+<div class="app">
+  <!-- TAB BAR — dot = status only (green connected / blue connecting / red disconnected); thin bar = accent color -->
+  <div class="tabbar">
+    <div class="tab pinned active"><svg class="i sm"><use href="#ic-terminal"/></svg><span>Sessions</span></div>
+    <div class="tab"><span class="accent" style="background:hsl(var(--destructive))"></span><span class="dot on"></span>prod-db-01<span class="x"><svg class="i sm"><use href="#ic-x"/></svg></span></div>
+    <div class="tab"><span class="accent" style="background:hsl(var(--amber))"></span><span class="dot connecting"></span>staging-web<span class="x"><svg class="i sm"><use href="#ic-x"/></svg></span></div>
+    <div class="tab"><span class="accent" style="background:hsl(var(--connecting))"></span><span class="dot off"></span>bastion<span class="x"><svg class="i sm"><use href="#ic-x"/></svg></span></div>
+    <div class="plus"><svg class="i sm"><use href="#ic-plus"/></svg></div>
+  </div>
+
+  <div class="body">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="side-scroll">
+        <div class="side-item active"><svg class="i sm"><use href="#ic-server"/></svg> Hosts</div>
+        <div class="side-item"><svg class="i sm"><use href="#ic-key"/></svg> Keys</div>
+        <div class="side-item"><svg class="i sm"><use href="#ic-zap"/></svg> Snippets</div>
+        <div class="side-item"><svg class="i sm"><use href="#ic-forward"/></svg> Port Forwards</div>
+        <div class="side-item"><svg class="i sm"><use href="#ic-clock"/></svg> History</div>
+        <div class="side-head">Groups</div>
+        <div class="side-item"><svg class="i sm"><use href="#ic-chevron-d"/></svg> Acme Corp</div>
+        <div class="side-item tree-child"><svg class="i sm"><use href="#ic-chevron-d"/></svg> Production</div>
+        <div class="side-item tree-child2"><svg class="i sm"><use href="#ic-chevron-r"/></svg> web cluster</div>
+        <div class="side-item tree-child"><svg class="i sm"><use href="#ic-chevron-r"/></svg> Staging</div>
+        <div class="side-item"><svg class="i sm"><use href="#ic-chevron-r"/></svg> Homelab</div>
+        <div class="side-item"><svg class="i sm"><use href="#ic-chevron-r"/></svg> Clients</div>
+      </div>
+      <div class="vault"><svg class="i sm" style="color:hsl(var(--primary))"><use href="#ic-lock"/></svg> Vault unlocked <span class="muted mono" style="margin-left:auto;font-size:10px">⌘L</span></div>
+    </div>
+
+    <!-- MAIN -->
+    <div class="main">
+
+      <!-- ===== HOST LIST ===== -->
+      <div class="page view" id="view-hosts">
+        <div class="toolbar">
+          <div class="seg"><button class="active">All Hosts</button><button>Production</button><button>Clients</button></div>
+          <div class="search"><svg class="i sm muted"><use href="#ic-search"/></svg><input placeholder="Search hosts…   /"></div>
+          <div class="chip tag">prod <svg class="i" style="width:11px;height:11px"><use href="#ic-x"/></svg></div>
+          <div class="spacer"></div>
+          <button class="btn primary"><svg class="i sm"><use href="#ic-plus"/></svg> New Host</button>
+        </div>
+
+        <div class="activebar">
+          <div class="acard"><div class="top"><span class="dot on"></span> prod-db-01</div><div class="meta mono">18ms · up 42m</div></div>
+          <div class="acard"><div class="top"><span class="dot connecting"></span> staging-web</div><div class="meta mono">connecting…</div></div>
+          <div class="acard"><div class="top"><span class="dot off"></span> bastion</div><div class="meta mono">disconnected</div></div>
+        </div>
+
+        <div class="listscroll">
+          <div class="cluster-h"><svg class="i" style="width:12px;height:12px;color:hsl(var(--amber))"><use href="#ic-star"/></svg> Favorites</div>
+          <div class="row sel">
+            <span class="hico"><svg class="i sm"><use href="#ic-database"/></svg></span><span class="name">prod-db-01</span>
+            <span class="addr muted mono">deploy@10.0.4.12:22</span>
+            <span class="chip tag">prod</span><span class="chip tag">db</span>
+            <span class="spacer"></span>
+            <span class="actions"><span class="iconbtn" title="Connect in split"><svg class="i sm"><use href="#ic-split"/></svg></span><span class="iconbtn" title="SFTP"><svg class="i sm"><use href="#ic-files"/></svg></span><span class="iconbtn" title="Edit"><svg class="i sm"><use href="#ic-edit"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-more"/></svg></span></span>
+            <span class="star"><svg class="i sm"><use href="#ic-star"/></svg></span><span class="when">2m ago</span>
+          </div>
+          <div class="row">
+            <span class="hico"><svg class="i sm"><use href="#ic-server"/></svg></span><span class="name">staging-web</span>
+            <span class="addr muted mono">ubuntu@staging.acme.io:22</span>
+            <span class="chip tag">staging</span>
+            <span class="spacer"></span>
+            <span class="actions"><span class="iconbtn"><svg class="i sm"><use href="#ic-split"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-files"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-edit"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-more"/></svg></span></span>
+            <span class="star"><svg class="i sm"><use href="#ic-star"/></svg></span><span class="when">1h ago</span>
+          </div>
+
+          <div class="cluster-h">All Hosts · 47</div>
+          <div class="row">
+            <span class="hico"><svg class="i sm"><use href="#ic-shield"/></svg></span><span class="name">bastion</span>
+            <span class="addr muted mono">jump@bastion.acme.io:22</span>
+            <span class="chip tag">jump</span>
+            <span class="spacer"></span>
+            <span class="actions"><span class="iconbtn"><svg class="i sm"><use href="#ic-split"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-files"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-edit"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-more"/></svg></span></span>
+            <span class="when">yesterday</span>
+          </div>
+          <div class="row">
+            <span class="hico"><svg class="i sm"><use href="#ic-monitor"/></svg></span><span class="name">macmini-ci</span>
+            <span class="addr muted mono">ci@192.168.1.20:22</span>
+            <span class="chip tag">ci</span><span class="chip tag">local</span>
+            <span class="spacer"></span>
+            <span class="actions"><span class="iconbtn"><svg class="i sm"><use href="#ic-split"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-files"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-edit"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-more"/></svg></span></span>
+            <span class="when">3d ago</span>
+          </div>
+          <div class="row">
+            <span class="hico"><svg class="i sm"><use href="#ic-database"/></svg></span><span class="name">redis-cache-02</span>
+            <span class="addr muted mono">deploy@10.0.4.31:6379</span>
+            <span class="chip tag">prod</span><span class="chip tag">cache</span>
+            <span class="spacer"></span>
+            <span class="actions"><span class="iconbtn"><svg class="i sm"><use href="#ic-split"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-files"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-edit"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-more"/></svg></span></span>
+            <span class="when">3d ago</span>
+          </div>
+          <div class="row">
+            <span class="hico"><svg class="i sm"><use href="#ic-radio"/></svg></span><span class="name">edge-router</span>
+            <span class="addr muted mono">admin@203.0.113.7:2222</span>
+            <span class="chip tag">network</span>
+            <span class="spacer"></span>
+            <span class="actions"><span class="iconbtn"><svg class="i sm"><use href="#ic-split"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-files"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-edit"/></svg></span><span class="iconbtn"><svg class="i sm"><use href="#ic-more"/></svg></span></span>
+            <span class="when">1w ago</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== STEPPER ===== -->
+      <div class="page view hidden" id="view-stepper">
+        <div class="panehead"><span class="dot connecting"></span> prod-db-01 <span class="muted mono">deploy@10.0.4.12:22</span></div>
+        <div class="stepwrap">
+          <div class="stepper">
+            <div class="title">Connecting to prod-db-01</div>
+            <div class="sub mono">via bastion.acme.io · key: id_ed25519</div>
+
+            <div class="step done"><div class="si"><svg class="i" style="width:12px;height:12px"><use href="#ic-check"/></svg></div><div><div class="lbl">Resolving host</div><div class="det mono">10.0.4.12</div></div></div>
+            <div class="step done"><div class="si"><svg class="i" style="width:12px;height:12px"><use href="#ic-check"/></svg></div><div><div class="lbl">TCP connect</div><div class="det mono">bastion.acme.io:22 → 4ms</div></div></div>
+            <div class="step done"><div class="si"><svg class="i" style="width:12px;height:12px"><use href="#ic-check"/></svg></div><div><div class="lbl">Jump host: bastion</div><div class="det mono">authenticated (id_ed25519)</div></div></div>
+            <div class="step done"><div class="si"><svg class="i" style="width:12px;height:12px"><use href="#ic-check"/></svg></div><div><div class="lbl">Key exchange</div><div class="det mono">curve25519-sha256 · chacha20-poly1305</div></div></div>
+            <div class="step done"><div class="si"><svg class="i" style="width:12px;height:12px"><use href="#ic-check"/></svg></div><div><div class="lbl">Host key verified</div><div class="det mono">SHA256:5vK…j2Q (known)</div></div></div>
+            <div class="step active"><div class="si"><div class="spin"></div></div><div style="flex:1"><div class="lbl">Two-factor authentication</div><div class="det">Enter the 6-digit code from your authenticator</div>
+              <div class="codebox"><input value="4"><input value="8"><input value="2"><input><input><input></div>
+            </div></div>
+            <div class="step pending"><div class="si"></div><div><div class="lbl">Open shell</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== TERMINAL ===== -->
+      <div class="page view hidden" id="view-terminal" style="position:relative">
+        <div class="panehead"><span class="dot on"></span> prod-db-01 <span class="muted mono">deploy@10.0.4.12 · 18ms</span><span class="spacer"></span><span class="muted mono" style="font-size:11px">⌘F find</span><span class="iconbtn"><svg class="i sm"><use href="#ic-more"/></svg></span></div>
+        <div class="findbar"><svg class="i sm muted"><use href="#ic-search"/></svg><input value="ERROR"><span class="muted mono" style="font-size:11px">3 / 17</span><span class="iconbtn" style="width:22px;height:22px"><svg class="i sm"><use href="#ic-chevron-d"/></svg></span><span class="iconbtn" style="width:22px;height:22px"><svg class="i sm"><use href="#ic-x"/></svg></span></div>
+        <div class="term">
+          <div><span class="p">deploy@prod-db-01</span>:<span class="u">~</span>$ tail -f /var/log/app/api.log</div>
+          <div class="g">2026-07-18T14:02:11Z INFO  request handled route=/v1/orders 200 12ms</div>
+          <div class="g">2026-07-18T14:02:11Z INFO  request handled route=/v1/users 200 8ms</div>
+          <div style="color:hsl(var(--destructive))">2026-07-18T14:02:12Z ERROR db timeout pool=primary after 5000ms</div>
+          <div class="g">2026-07-18T14:02:13Z INFO  retrying connection to primary…</div>
+          <div class="g">2026-07-18T14:02:14Z INFO  request handled route=/v1/health 200 2ms</div>
+          <div style="color:hsl(var(--destructive))">2026-07-18T14:02:15Z ERROR db timeout pool=primary after 5000ms</div>
+          <div class="g">2026-07-18T14:02:16Z WARN  circuit breaker open pool=primary</div>
+          <div><span class="p">deploy@prod-db-01</span>:<span class="u">~</span>$ <span class="cursor">&nbsp;</span></div>
+        </div>
+      </div>
+
+      <!-- ===== SPLIT ===== -->
+      <div class="page view hidden" id="view-split">
+        <div class="splitwrap">
+          <div class="spane activepane">
+            <div class="panehead"><span class="dot on"></span> web-01 <span class="muted mono">18ms</span><span class="spacer"></span><span class="iconbtn" style="width:22px;height:22px"><svg class="i sm"><use href="#ic-x"/></svg></span></div>
+            <div class="term" style="font-size:11.5px"><div><span class="p">deploy@web-01</span>:$ systemctl status nginx</div><div class="g">● active (running) since 12:04</div><div><span class="p">deploy@web-01</span>:$ <span class="cursor">&nbsp;</span></div></div>
+          </div>
+          <div class="spane">
+            <div class="panehead"><span class="dot on"></span> web-02 <span class="muted mono">21ms</span><span class="spacer"></span><span class="iconbtn" style="width:22px;height:22px"><svg class="i sm"><use href="#ic-x"/></svg></span></div>
+            <div class="term" style="font-size:11.5px"><div><span class="p">deploy@web-02</span>:$ systemctl status nginx</div><div class="g">● active (running) since 12:04</div></div>
+            <div class="dropzone"><div class="dz" style="right:0;top:0;bottom:0;width:45%">drop → split right</div></div>
+          </div>
+          <div class="spane">
+            <div class="panehead"><span class="dot connecting"></span> web-03 <span class="muted mono">connecting</span><span class="spacer"></span><span class="iconbtn" style="width:22px;height:22px"><svg class="i sm"><use href="#ic-x"/></svg></span></div>
+            <div class="term" style="font-size:11.5px;display:grid;place-items:center"><div style="text-align:center"><div class="muted">Connection lost — reconnecting… (2)</div><div class="btn" style="margin-top:10px;display:inline-flex">Reconnect now</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== BROADCAST ===== -->
+      <div class="page view hidden" id="view-broadcast">
+        <div class="splitwrap" style="padding-bottom:0">
+          <div class="spane" style="outline:1.5px solid hsl(var(--amber)/.55);outline-offset:-1px">
+            <div class="panehead"><span class="dot on"></span> web-01</div>
+            <div class="term" style="font-size:11.5px"><div><span class="p">deploy@web-01</span>:$ sudo systemctl restart api<span class="cursor">&nbsp;</span></div></div>
+          </div>
+          <div class="spane" style="outline:1.5px solid hsl(var(--amber)/.55);outline-offset:-1px">
+            <div class="panehead"><span class="dot on"></span> web-02</div>
+            <div class="term" style="font-size:11.5px"><div><span class="p">deploy@web-02</span>:$ sudo systemctl restart api<span class="cursor">&nbsp;</span></div></div>
+          </div>
+          <div class="spane" style="outline:1.5px solid hsl(var(--amber)/.55);outline-offset:-1px">
+            <div class="panehead"><span class="dot on"></span> web-03</div>
+            <div class="term" style="font-size:11.5px"><div><span class="p">deploy@web-03</span>:$ sudo systemctl restart api<span class="cursor">&nbsp;</span></div></div>
+          </div>
+        </div>
+        <div class="bcast">
+          <span class="lbl"><svg class="i sm"><use href="#ic-broadcast"/></svg> Broadcasting to 3 sessions</span>
+          <span class="chip">web-01 <svg class="i" style="width:11px;height:11px"><use href="#ic-x"/></svg></span>
+          <span class="chip">web-02 <svg class="i" style="width:11px;height:11px"><use href="#ic-x"/></svg></span>
+          <span class="chip">web-03 <svg class="i" style="width:11px;height:11px"><use href="#ic-x"/></svg></span>
+          <span class="spacer"></span>
+          <span class="muted">One-command mode</span><span class="switch"><i></i></span>
+          <span class="muted mono">Esc to exit</span>
+        </div>
+      </div>
+
+      <!-- ===== KEY MANAGER ===== -->
+      <div class="page view hidden" id="view-keys">
+        <div class="phead"><div><h2>Keys</h2><p>Import existing keys or generate new ones — private keys are stored in macOS Keychain.</p></div><span class="spacer"></span><button class="btn"><svg class="i sm"><use href="#ic-files"/></svg> Import</button><button class="btn primary"><svg class="i sm"><use href="#ic-plus"/></svg> Generate key</button></div>
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>Fingerprint</th><th>Stored</th><th>Used by</th><th>Created</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>id_ed25519</td><td><span class="badge b-key">ED25519</span></td><td class="mono muted">SHA256:5vK…j2Q</td><td><span class="cell"><svg class="i sm muted"><use href="#ic-lock"/></svg> Keychain</span></td><td>12 hosts</td><td class="muted">2024-11-02</td><td class="muted"><svg class="i sm"><use href="#ic-more"/></svg></td></tr>
+            <tr><td>work-rsa</td><td><span class="badge b-key">RSA-4096</span></td><td class="mono muted">SHA256:a1B…9kL</td><td><span class="cell"><svg class="i sm muted"><use href="#ic-lock"/></svg> Keychain</span></td><td>4 hosts</td><td class="muted">2023-06-15</td><td class="muted"><svg class="i sm"><use href="#ic-more"/></svg></td></tr>
+            <tr><td>yubikey-fido2</td><td><span class="badge b-key">FIDO2</span></td><td class="mono muted">SHA256:Qz…Xr0</td><td><span class="cell"><svg class="i sm muted"><use href="#ic-hardware"/></svg> Hardware</span></td><td>2 hosts</td><td class="muted">2025-01-20</td><td class="muted"><svg class="i sm"><use href="#ic-more"/></svg></td></tr>
+            <tr><td>ecdsa-legacy</td><td><span class="badge b-key">ECDSA</span></td><td class="mono muted">SHA256:p9…Mn2</td><td><span class="cell"><svg class="i sm muted"><use href="#ic-lock"/></svg> Keychain</span></td><td>1 host</td><td class="muted">2022-03-08</td><td class="muted"><svg class="i sm"><use href="#ic-more"/></svg></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ===== SFTP ===== -->
+      <div class="page view hidden" id="view-sftp" style="display:flex;flex-direction:column">
+        <div class="panehead"><span class="dot on"></span> SFTP — prod-db-01 <span class="muted mono">deploy@10.0.4.12</span></div>
+        <div class="dual">
+          <div class="fpane">
+            <div class="crumb"><svg class="i sm muted"><use href="#ic-laptop"/></svg><span class="muted">Local</span><span class="mono muted">~/projects/acme</span></div>
+            <table><thead><tr><th>Name</th><th>Size</th><th>Modified</th><th class="mono">Perms</th></tr></thead>
+            <tbody>
+              <tr><td><span class="cell"><svg class="i sm muted"><use href="#ic-folder"/></svg> build</span></td><td class="muted">—</td><td class="muted">14:01</td><td class="mono muted">drwxr-xr-x</td></tr>
+              <tr><td><span class="cell"><svg class="i sm muted"><use href="#ic-file"/></svg> deploy.sh</span></td><td>2.1 KB</td><td class="muted">13:55</td><td class="mono muted">-rwxr-xr-x</td></tr>
+              <tr><td><span class="cell"><svg class="i sm muted"><use href="#ic-file"/></svg> .env.prod</span></td><td>612 B</td><td class="muted">Jul 12</td><td class="mono muted">-rw-------</td></tr>
+            </tbody></table>
+          </div>
+          <div class="fpane" style="border-right:none">
+            <div class="crumb"><svg class="i sm muted"><use href="#ic-server"/></svg><span class="muted">Remote</span><span class="mono muted">/var/www/app</span></div>
+            <table><thead><tr><th>Name</th><th>Size</th><th>Modified</th><th class="mono">Perms</th></tr></thead>
+            <tbody>
+              <tr><td><span class="cell"><svg class="i sm muted"><use href="#ic-folder"/></svg> releases</span></td><td class="muted">—</td><td class="muted">Jul 17</td><td class="mono muted">drwxr-xr-x</td></tr>
+              <tr style="background:hsl(var(--primary)/.09)"><td><span class="cell"><svg class="i sm muted"><use href="#ic-file"/></svg> config.yml</span></td><td>1.4 KB</td><td class="muted">Jul 15</td><td class="mono muted">-rw-r--r--</td></tr>
+              <tr><td><span class="cell"><svg class="i sm muted"><use href="#ic-file"/></svg> current</span></td><td class="muted">→ releases/42</td><td class="muted">Jul 17</td><td class="mono muted">lrwxrwxrwx</td></tr>
+            </tbody></table>
+          </div>
+        </div>
+        <div class="tray">
+          <div class="th">Transfers</div>
+          <div style="padding:8px 14px">
+            <div style="display:flex;font-size:12px"><span>deploy.sh → /var/www/app</span><span class="spacer"></span><span class="muted mono">2.1 KB · 1.2 MB/s</span></div>
+            <div class="prog"><div style="width:72%"></div></div>
+          </div>
+          <div style="padding:2px 14px;font-size:12px;display:flex"><span class="muted">build/ → /var/www/app/releases (48 files)</span><span class="spacer"></span><span class="muted mono cell">done <svg class="i sm" style="color:hsl(var(--primary))"><use href="#ic-check"/></svg></span></div>
+        </div>
+      </div>
+
+      <!-- ===== PORT FORWARDS ===== -->
+      <div class="page view hidden" id="view-forwards">
+        <div class="phead"><div><h2>Port Forwards</h2><p>Saved, named tunnels — toggle on or off without retyping ssh flags.</p></div><span class="spacer"></span><button class="btn primary"><svg class="i sm"><use href="#ic-plus"/></svg> New forward</button></div>
+        <table>
+          <thead><tr><th>Type</th><th>Route</th><th>Host</th><th>Throughput</th><th>Active</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge b-local">LOCAL</span></td><td class="mono">localhost:8080 → prod-db:5432</td><td>bastion</td><td class="mono muted">1.4 MB/s</td><td><span class="switch on"><i></i></span></td></tr>
+            <tr><td><span class="badge b-remote">REMOTE</span></td><td class="mono">:9000 ← dev.local:3000</td><td>staging-web</td><td class="mono muted">—</td><td><span class="switch"><i></i></span></td></tr>
+            <tr><td><span class="badge b-dyn">DYNAMIC</span></td><td class="mono">SOCKS :1080</td><td>bastion</td><td class="mono muted">312 KB/s</td><td><span class="switch on"><i></i></span></td></tr>
+          </tbody>
+        </table>
+        <div style="margin:16px 18px;padding:11px 13px;background:hsl(var(--muted));border-radius:8px;font-size:12px" class="muted">
+          <b style="color:hsl(var(--foreground))">Local</b> — reach a remote service as if it were on your machine. &nbsp; <b style="color:hsl(var(--foreground))">Remote</b> — expose your machine to the server. &nbsp; <b style="color:hsl(var(--foreground))">Dynamic</b> — a SOCKS proxy through the host.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- FOOTER — slim global status only (per-session names live in the tab bar, not duplicated here) -->
+  <div class="footer">
+    <span>3 sessions active</span>
+    <span class="spacer"></span>
+    <span>Theme: Dracula</span><span>·</span><span class="mono">⌘K</span> <span>command palette</span>
+  </div>
+</div>
+
+<!-- ===== PALETTE OVERLAY ===== -->
+<div class="scrim hidden" id="ov-palette">
+  <div class="palette">
+    <div class="pin"><svg class="i muted"><use href="#ic-search"/></svg><input value="prod" autofocus><span class="kbd">esc</span></div>
+    <div class="pgroup">Hosts</div>
+    <div class="presult on"><span class="txt"><svg class="i sm muted"><use href="#ic-database"/></svg> prod-db-01 <span class="muted mono" style="font-size:11px">deploy@10.0.4.12</span></span><span class="k"><span class="kbd">↵</span> connect <span class="kbd">⌘↵</span> split</span></div>
+    <div class="presult"><span class="txt"><svg class="i sm muted"><use href="#ic-database"/></svg> redis-cache-02 <span class="muted mono" style="font-size:11px">prod</span></span><span class="k"><span class="kbd">↵</span> connect</span></div>
+    <div class="pgroup">Groups</div>
+    <div class="presult"><span class="txt"><svg class="i sm muted"><use href="#ic-folder"/></svg> Production <span class="muted" style="font-size:11px">6 hosts</span></span><span class="k"><span class="kbd">↵</span> open group</span></div>
+    <div class="pgroup">Commands</div>
+    <div class="presult"><span class="txt"><svg class="i sm muted"><use href="#ic-files"/></svg> Import from ~/.ssh/config</span></div>
+    <div class="presult"><span class="txt"><svg class="i sm muted"><use href="#ic-broadcast"/></svg> Toggle broadcast</span><span class="k"><span class="kbd">⌘B</span></span></div>
+    <div class="presult"><span class="txt"><svg class="i sm muted"><use href="#ic-lock"/></svg> Lock vault</span><span class="k"><span class="kbd">⌘L</span></span></div>
+  </div>
+</div>
+
+<!-- ===== EDITOR OVERLAY ===== -->
+<div class="scrim hidden" id="ov-editor">
+  <div class="modal">
+    <div class="mh"><svg class="i sm"><use href="#ic-edit"/></svg> Edit host — prod-db-01</div>
+    <div class="mtabs"><span class="mtab active">General</span><span class="mtab">Jump / Proxy</span><span class="mtab">Port forwarding</span><span class="mtab">Terminal &amp; theme</span><span class="mtab">Advanced</span></div>
+    <div class="mbody">
+      <div class="grid3">
+        <div class="field"><label>Label</label><input value="prod-db-01"></div>
+        <div class="field"><label>Port</label><input class="mono" value="22"></div>
+        <div class="field"><label>Favorite</label><select><option>Yes</option><option>No</option></select></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Address</label><input class="mono" value="10.0.4.12"></div>
+        <div class="field"><label>Username</label><input class="mono" value="deploy"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Authentication</label><select><option>Key — id_ed25519</option><option>Password</option><option>Agent</option></select></div>
+        <div class="field"><label>Group</label><select><option>Acme Corp / Production</option></select></div>
+      </div>
+      <div class="field"><label>Tags</label><input value="prod, db"></div>
+      <div style="background:hsl(var(--muted));border-radius:8px;padding:11px 13px;font-size:12px;display:flex;align-items:center;gap:10px"><span class="dot on"></span> <span class="muted">Test connection:</span> <span class="mono" style="color:hsl(var(--primary))">reachable · host key known · auth ok (320ms)</span></div>
+    </div>
+    <div class="mfoot"><button class="btn ghost">Cancel</button><button class="btn">Save</button><button class="btn primary">Save &amp; Connect</button></div>
+  </div>
+</div>
+
+<!-- ===== HOST KEY CHANGED ALERT ===== -->
+<div class="scrim hidden" id="ov-hostkey">
+  <div class="alert">
+    <div class="ah"><div class="warnico"><svg class="i"><use href="#ic-alert"/></svg></div><div><div style="font-size:15px;font-weight:600">Host key changed for prod-db-01</div><div class="muted" style="font-size:12.5px;margin-top:5px">This could indicate a man-in-the-middle attack — or the server was legitimately rebuilt. Do not continue unless you expected this.</div></div></div>
+    <div class="fp">
+      <div class="fpcol old"><div class="muted" style="margin-bottom:5px">Previously trusted</div><div class="mono">SHA256:5vKq8s…Hj2Q</div><div class="muted mono" style="margin-top:4px">ed25519 · added 2024-11-02</div></div>
+      <div class="fpcol new"><div style="color:hsl(var(--destructive));margin-bottom:5px">Now presented</div><div class="mono">SHA256:9Xr2mB…Zk7T</div><div class="muted mono" style="margin-top:4px">ed25519 · just now</div></div>
+    </div>
+    <div class="mfoot"><button class="btn primary" style="background:hsl(var(--muted));color:hsl(var(--foreground))">Reject &amp; disconnect</button><button class="btn ghost" style="color:hsl(var(--destructive))">Accept new key</button></div>
+  </div>
+</div>
+
+<script>
+  const views={hosts:'view-hosts',stepper:'view-stepper',terminal:'view-terminal',split:'view-split',broadcast:'view-broadcast',keys:'view-keys',sftp:'view-sftp',forwards:'view-forwards'};
+  const overlays={palette:'ov-palette',editor:'ov-editor',hostkey:'ov-hostkey'};
+  const switcher=document.querySelector('.switcher');
+  function show(s){
+    document.querySelectorAll('.switcher button').forEach(b=>b.classList.toggle('active',b.dataset.s===s));
+    Object.values(overlays).forEach(id=>document.getElementById(id).classList.add('hidden'));
+    if(overlays[s]){document.getElementById(overlays[s]).classList.remove('hidden');return;}
+    document.querySelectorAll('.view').forEach(v=>v.classList.add('hidden'));
+    document.getElementById(views[s]).classList.remove('hidden');
+  }
+  switcher.addEventListener('click',e=>{if(e.target.dataset.s)show(e.target.dataset.s);});
+  document.querySelectorAll('.scrim').forEach(sc=>sc.addEventListener('click',e=>{if(e.target===sc){sc.classList.add('hidden');show('hosts');}}));
+  document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();show('palette');}if(e.key==='Escape'){Object.values(overlays).forEach(id=>document.getElementById(id).classList.add('hidden'));}});
+</script>
+</body>
+</html>

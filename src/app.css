@@ -1,3 +1,27 @@
+/* Design tokens — single source of truth (see docs/design-spec.md §1.1 and
+   docs/ssh-client-mockup.html). HSL triplets so components compose them as
+   hsl(var(--token) / <alpha>). Dark ships first; a .light block slots in at
+   Phase 3. CSS custom properties pierce Svelte's scoped styles, so every
+   component references these directly. */
+:root {
+  --background: 222 16% 8%;
+  --card: 224 13% 11%;
+  --popover: 224 14% 10%;
+  --muted: 224 10% 15%;
+  --muted-foreground: 220 8% 58%;
+  --foreground: 210 18% 90%;
+  --border: 224 10% 17%;
+  --primary: 160 84% 42%;
+  --primary-foreground: 224 14% 8%;
+  --destructive: 0 72% 55%;
+  --ring: 160 84% 42%;
+  /* status language (dot) + accent presets */
+  --connecting: 210 90% 58%;
+  --amber: 38 92% 55%;
+  --violet: 265 70% 66%;
+  --radius: 8px;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -11,4 +35,19 @@ body,
 
 body {
   color-scheme: dark;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: -apple-system, system-ui, "Inter", sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Mono for every machine-readable value (host:port, IPs, fingerprints, keys). */
+.mono {
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+}
+
+.muted {
+  color: hsl(var(--muted-foreground));
 }

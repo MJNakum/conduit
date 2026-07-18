@@ -13,6 +13,13 @@
   let password = $state('')
   const Icon = $derived(pane.host ? hostIcon(pane.host) : null)
 
+  function dotColor(phase: string): string {
+    if (phase === 'connecting' || phase === 'authenticating') return 'hsl(var(--connecting))'
+    if (phase === 'connected') return 'hsl(var(--primary))'
+    if (phase === 'error' || phase === 'disconnected') return 'hsl(var(--destructive))'
+    return 'hsl(var(--muted-foreground))'
+  }
+
   async function connect() {
     if (!pane.host) return
     pane.error = ''
@@ -62,7 +69,7 @@
   {#if !pane.host}
     <!-- Empty split pane: pick a host. -->
     <div class="pick">
-      <p class="dim">Pick a host for this pane</p>
+      <p class="muted">Pick a host for this pane</p>
       <ul>
         {#each store.hosts as h (h.id)}
           {@const HIcon = hostIcon(h)}
@@ -70,36 +77,42 @@
             <button onclick={() => (pane.host = h)}>
               <span class="hicon" style:color={h.color ?? undefined}><HIcon size={16} /></span>
               <span>{h.name}</span>
-              <span class="dim">{h.user}@{h.hostname}</span>
+              <span class="muted mono">{h.user}@{h.hostname}</span>
             </button>
           </li>
         {:else}
-          <li class="dim">No hosts saved.</li>
+          <li class="muted">No hosts saved.</li>
         {/each}
       </ul>
     </div>
   {:else if !pane.sessionId}
     <div class="connect">
       <h2>{#if Icon}<Icon size={18} />{/if} {pane.host.name}</h2>
-      <p class="dim">{pane.host.user}@{pane.host.hostname}:{pane.host.port}</p>
+      <p class="muted mono">{pane.host.user}@{pane.host.hostname}:{pane.host.port}</p>
       <form onsubmit={(e) => { e.preventDefault(); connect() }}>
         <!-- svelte-ignore a11y_autofocus -->
         <input type="password" placeholder="password" bind:value={password} autofocus />
-        <button class="primary" type="submit">Connect</button>
+        <button class="btn primary" type="submit">Connect</button>
       </form>
       {#if pane.error}<div class="err">{pane.error}</div>{/if}
     </div>
   {:else}
     <div class="wrap">
+      <div class="panehead">
+        <span class="dot" style:background={dotColor(pane.phase)}></span>
+        {#if Icon}<Icon size={14} />{/if}
+        <span>{pane.host.name}</span>
+        <span class="muted mono">{pane.host.user}@{pane.host.hostname}</span>
+      </div>
       <div class="term"><Terminal id={pane.sessionId} /></div>
       {#if overlay}
         <div class="cover">
           <h3>{#if Icon}<Icon size={18} />{/if} {pane.host.name}</h3>
           <Stepper phase={pane.phase} error={pane.error} />
           {#if pane.phase === 'disconnected'}
-            <button class="primary" onclick={reconnect}>Reconnect</button>
+            <button class="btn primary" onclick={reconnect}>Reconnect</button>
           {:else if pane.phase === 'error'}
-            <button class="primary" onclick={reset}>Try again</button>
+            <button class="btn primary" onclick={reset}>Try again</button>
           {/if}
         </div>
       {/if}
@@ -112,25 +125,46 @@
     position: relative;
     height: 100%;
     overflow: hidden;
-    border: 1px solid #222;
+    border: 1px solid hsl(var(--border));
     display: flex;
     flex-direction: column;
+    background: hsl(var(--background));
   }
   .pane.active {
-    border-color: #2b6cff;
+    border-color: hsl(var(--primary));
+  }
+  .panehead {
+    height: 28px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 11px;
+    background: hsl(var(--card));
+    border-bottom: 1px solid hsl(var(--border));
+    font-size: 12px;
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
   }
   .wrap {
     position: relative;
     flex: 1;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
   .term {
-    height: 100%;
+    flex: 1;
+    min-height: 0;
   }
   .cover {
     position: absolute;
     inset: 0;
-    background: rgba(10, 10, 10, 0.92);
+    background: hsl(var(--background) / 0.92);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -143,6 +177,7 @@
     align-items: center;
     justify-content: center;
     gap: 0.4rem;
+    font-weight: 600;
   }
   .connect {
     margin: auto;
@@ -156,11 +191,17 @@
     margin-top: 1rem;
   }
   input {
-    padding: 0.5rem;
-    background: #1a1a1a;
-    border: 1px solid #333;
-    color: #eee;
-    border-radius: 4px;
+    padding: 8px 10px;
+    background: hsl(var(--muted));
+    border: 1px solid hsl(var(--border));
+    color: inherit;
+    border-radius: 7px;
+    outline: none;
+    font-family: inherit;
+    font-size: 13px;
+  }
+  input:focus {
+    border-color: hsl(var(--ring) / 0.6);
   }
   .pick {
     margin: auto;
@@ -180,34 +221,43 @@
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    padding: 0.5rem;
-    background: #1a1a1a;
-    border: 1px solid #2a2a2a;
-    color: #eee;
-    border-radius: 4px;
+    padding: 8px 10px;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    color: inherit;
+    border-radius: 7px;
     margin-bottom: 0.3rem;
     cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
   }
   .pick button:hover {
-    background: #202632;
+    background: hsl(var(--muted));
   }
   .hicon {
     display: flex;
   }
-  .dim {
-    color: #888;
-    font-size: 0.8rem;
-  }
   .err {
-    color: #f66;
+    color: hsl(var(--destructive));
     margin-top: 0.6rem;
+    font-size: 12.5px;
   }
-  button.primary {
-    background: #2b6cff;
-    border: 1px solid #2b6cff;
-    color: #fff;
-    padding: 0.5rem 0.9rem;
-    border-radius: 4px;
+  .btn {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 7px;
+    background: hsl(var(--muted));
+    color: inherit;
+    font-family: inherit;
+    font-size: 13px;
     cursor: pointer;
+  }
+  .btn.primary {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    font-weight: 600;
+  }
+  .btn.primary:hover {
+    filter: brightness(1.08);
   }
 </style>

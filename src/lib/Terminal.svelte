@@ -130,40 +130,46 @@
   .term {
     width: 100%;
     height: 100%;
-    background: #000;
+    background: #0a0e13;
   }
   .search {
     position: absolute;
-    top: 6px;
-    right: 6px;
+    top: 8px;
+    right: 12px;
     display: flex;
     align-items: center;
-    gap: 0.2rem;
-    background: #1c1c1c;
-    border: 1px solid #333;
-    border-radius: 6px;
-    padding: 0.25rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    gap: 6px;
+    background: hsl(var(--popover));
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    padding: 6px 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   }
   .search input {
-    background: #111;
-    border: 1px solid #333;
-    color: #eee;
-    border-radius: 4px;
-    padding: 0.25rem 0.4rem;
-    width: 160px;
+    background: hsl(var(--muted));
+    border: none;
+    outline: none;
+    color: hsl(var(--foreground));
+    border-radius: 5px;
+    padding: 4px 8px;
+    width: 150px;
+    font-size: 12px;
+    font-family: inherit;
   }
   .search button {
-    display: flex;
-    padding: 0.25rem;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
     background: none;
     border: none;
-    color: #bbb;
+    color: hsl(var(--muted-foreground));
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 5px;
   }
   .search button:hover {
-    background: #2a2a2a;
-    color: #fff;
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
   }
 </style>
