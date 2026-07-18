@@ -49,6 +49,22 @@
           <label class="check"><input id="f-recon" type="checkbox" bind:checked={draft.autoReconnect} /> Reconnect on drop</label>
         </div>
       </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="f-auth">Auth</label>
+          <select id="f-auth" bind:value={draft.auth}>
+            <option value="password">Password</option>
+            <option value="key">Key</option>
+          </select>
+        </div>
+        {#if draft.auth === 'key'}
+          <!-- ponytail: path text input now; native file picker + Key-Manager reference in 2b. -->
+          <div class="field">
+            <label for="f-key">Identity file</label>
+            <input id="f-key" class="mono" value={draft.identityFile ?? ''} oninput={(e) => (draft.identityFile = (e.currentTarget as HTMLInputElement).value || null)} placeholder="~/.ssh/id_ed25519" />
+          </div>
+        {/if}
+      </div>
     </div>
     <div class="mfoot">
       <button class="btn ghost" onclick={onclose}>Cancel</button>
@@ -102,7 +118,8 @@
     font-size: 11.5px;
     color: hsl(var(--muted-foreground));
   }
-  .field input {
+  .field input,
+  .field select {
     background: hsl(var(--muted));
     border: 1px solid hsl(var(--border));
     border-radius: 7px;
@@ -112,7 +129,8 @@
     font-size: 13px;
     font-family: inherit;
   }
-  .field input:focus {
+  .field input:focus,
+  .field select:focus {
     border-color: hsl(var(--ring) / 0.6);
   }
   .grid2 {

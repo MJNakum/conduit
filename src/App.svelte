@@ -27,6 +27,7 @@
     tabHost,
     type Host,
     type Tab,
+    type StatePayload,
   } from './lib/state.svelte'
 
   let paletteOpen = $state(false)
@@ -43,9 +44,7 @@
 
   onMount(() => {
     loadHosts()
-    listen<{ id: string; state: string; message?: string }>('ssh://state', (e) =>
-      applyState(e.payload.id, e.payload.state, e.payload.message),
-    )
+    listen<StatePayload>('ssh://state', (e) => applyState(e.payload))
     // Cmd+K toggles the command palette. Captured at window level (works over
     // xterm too, since it fires before the terminal sees the key).
     const onKey = (e: KeyboardEvent) => {
