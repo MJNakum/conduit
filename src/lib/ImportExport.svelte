@@ -2,6 +2,7 @@
   import { Download, Upload, Copy, Check } from '@lucide/svelte'
   import {
     importSshConfig,
+    importPutty,
     exportSshConfig,
     writeSshConfig,
     saveHost,
@@ -14,9 +15,17 @@
   let err = $state('')
 
   // import
+  let source = $state<'sshconfig' | 'putty'>('sshconfig')
   let path = $state('~/.ssh/config')
   let parsed = $state<Host[] | null>(null)
   let selected = $state<Set<string>>(new Set())
+
+  // Reset the default path when switching source.
+  function pickSource(s: 'sshconfig' | 'putty') {
+    source = s
+    path = s === 'sshconfig' ? '~/.ssh/config' : '~/putty-sessions.reg'
+    parsed = null
+  }
 
   // export
   let text = $state('')
@@ -28,7 +37,7 @@
     busy = true
     err = ''
     try {
-      const hosts = await importSshConfig(path)
+      const hosts = source === 'putty' ? await importPutty(path) : await importSshConfig(path)
       parsed = hosts
       selected = new Set(hosts.map((h) => h.id))
     } catch (e) {
@@ -96,10 +105,14 @@
 <div class="backdrop" onclick={onclose} role="presentation">
   <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
     {#if mode === 'import'}
-      <div class="mh"><Upload size={15} /> Import from ssh_config</div>
+      <div class="mh"><Upload size={15} /> Import {source === 'putty' ? 'PuTTY sessions' : 'from ssh_config'}</div>
       <div class="mbody">
+        <div class="seg">
+          <button class:on={source === 'sshconfig'} onclick={() => pickSource('sshconfig')}>ssh_config</button>
+          <button class:on={source === 'putty'} onclick={() => pickSource('putty')}>PuTTY .reg</button>
+        </div>
         <div class="pathrow">
-          <input class="mono" bind:value={path} placeholder="~/.ssh/config" />
+          <input class="mono" bind:value={path} placeholder={source === 'putty' ? '~/putty-sessions.reg' : '~/.ssh/config'} />
           <button class="btn" onclick={scan} disabled={busy}>Scan</button>
         </div>
         {#if err}<div class="err">{err}</div>{/if}
@@ -187,6 +200,27 @@
     gap: 12px;
     max-height: 60vh;
     overflow: auto;
+  }
+  .seg {
+    display: inline-flex;
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    overflow: hidden;
+    width: fit-content;
+  }
+  .seg button {
+    padding: 6px 14px;
+    border: none;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    font: inherit;
+    font-size: 12.5px;
+  }
+  .seg button.on {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    font-weight: 600;
   }
   .pathrow {
     display: flex;

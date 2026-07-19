@@ -3,6 +3,7 @@ mod hosts;
 mod keys;
 mod knownhosts;
 mod logging;
+mod putty;
 mod secrets;
 mod snippets;
 mod ssh;
@@ -42,7 +43,8 @@ pub fn run() {
             logging::logs_dir_path,
             snippets::snippets_list,
             snippets::snippet_save,
-            snippets::snippet_delete
+            snippets::snippet_delete,
+            putty::putty_import
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

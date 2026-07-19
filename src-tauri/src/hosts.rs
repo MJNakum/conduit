@@ -67,6 +67,31 @@ fn store_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("hosts.json"))
 }
 
+/// A default Host with the given id/name, for importers (ssh_config, PuTTY).
+pub(crate) fn blank_host(id: &str, name: &str) -> Host {
+    Host {
+        id: id.into(),
+        name: name.into(),
+        hostname: String::new(),
+        port: 22,
+        user: String::new(),
+        tags: Vec::new(),
+        color: None,
+        favorite: false,
+        group: None,
+        auto_reconnect: false,
+        auth: "password".into(),
+        key_id: None,
+        identity_file: None,
+        jumps: Vec::new(),
+        raw: Vec::new(),
+        scheme: None,
+        font: None,
+        font_size: None,
+        logging: false,
+    }
+}
+
 pub(crate) fn read_all(app: &AppHandle) -> Result<Vec<Host>, String> {
     let path = store_path(app)?;
     match fs::read(&path) {
