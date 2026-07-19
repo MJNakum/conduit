@@ -15,6 +15,9 @@ pub struct Host {
     pub hostname: String,
     pub port: u16,
     pub user: String,
+    // Transport: "ssh" (default) | "telnet".
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
@@ -58,6 +61,10 @@ fn default_auth() -> String {
     "password".into()
 }
 
+fn default_protocol() -> String {
+    "ssh".into()
+}
+
 fn store_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -75,6 +82,7 @@ pub(crate) fn blank_host(id: &str, name: &str) -> Host {
         hostname: String::new(),
         port: 22,
         user: String::new(),
+        protocol: "ssh".into(),
         tags: Vec::new(),
         color: None,
         favorite: false,

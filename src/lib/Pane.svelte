@@ -23,7 +23,9 @@
   // Managed keys carry no secret (private material is unencrypted in the keychain),
   // so key-auth-with-a-managed-key needs no prompt.
   const managedKey = $derived(pane.host?.auth === 'key' && !!pane.host?.keyId)
-  const promptSecret = $derived(!hasSaved && !managedKey)
+  const isTelnet = $derived(pane.host?.protocol === 'telnet')
+  // Telnet has no client auth; SSH managed-key/saved-secret also skip the prompt.
+  const promptSecret = $derived(!isTelnet && !hasSaved && !managedKey)
 
   // Does the keychain already hold a secret for this host? If so, skip the prompt.
   $effect(() => {
@@ -46,6 +48,13 @@
     pane.error = ''
     pane.phase = 'connecting'
     try {
+      if (isTelnet) {
+        pane.sessionId = await invoke<string>('telnet_connect', {
+          host: pane.host.hostname,
+          port: pane.host.port,
+        })
+        return
+      }
       pane.sessionId = await invoke<string>('ssh_connect', {
         hostId: pane.host.id,
         host: pane.host.hostname,
@@ -133,7 +142,7 @@
       <p class="muted mono">{pane.host.user}@{pane.host.hostname}:{pane.host.port}</p>
       <form onsubmit={(e) => { e.preventDefault(); connect() }}>
         {#if !promptSecret}
-          <p class="muted small">{managedKey ? 'Authenticating with a managed key.' : 'Using saved secret from Keychain.'}</p>
+          <p class="muted small">{isTelnet ? 'Telnet — no authentication.' : managedKey ? 'Authenticating with a managed key.' : 'Using saved secret from Keychain.'}</p>
         {:else}
           <!-- svelte-ignore a11y_autofocus -->
           <input

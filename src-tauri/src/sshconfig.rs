@@ -15,6 +15,7 @@ fn blank(alias: &str) -> Host {
         hostname: String::new(),
         port: 22,
         user: String::new(),
+        protocol: "ssh".into(),
         tags: Vec::new(),
         color: None,
         favorite: false,

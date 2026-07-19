@@ -15,7 +15,7 @@ use tauri::{AppHandle, Emitter, State};
 use tokio::sync::{mpsc, oneshot};
 
 /// Input flowing from the webview toward the server for one session.
-enum SessionInput {
+pub(crate) enum SessionInput {
     Data(Vec<u8>),
     Resize { cols: u32, rows: u32 },
 }
@@ -34,12 +34,18 @@ pub(crate) struct Hop {
     secret: String,                // password, or key passphrase ("" if none)
 }
 
+/// How a session reaches its host: an SSH hop chain, or a raw Telnet socket.
+#[derive(Clone)]
+enum Transport {
+    Ssh(Vec<Hop>),
+    Telnet(String, u16),
+}
+
 /// A tracked session. `tx` is `None` while disconnected — the entry lingers so
 /// `ssh_reconnect` can restart it; `ssh_disconnect` drops the entry entirely.
-/// `chain` is the full path; its last element is the target.
 struct Session {
     tx: Option<mpsc::UnboundedSender<SessionInput>>,
-    chain: Vec<Hop>,
+    transport: Transport,
     // Host name to log this session's output under, or None if logging is off.
     log_name: Option<String>,
 }
@@ -127,6 +133,17 @@ fn emit_state(app: &AppHandle, id: &str, state: ConnState) {
             state,
         },
     );
+}
+
+// Helpers so non-SSH transports (telnet) drive the same events/UI.
+pub(crate) fn emit_connecting(app: &AppHandle, id: &str) {
+    emit_state(app, id, ConnState::Connecting);
+}
+pub(crate) fn emit_connected(app: &AppHandle, id: &str) {
+    emit_state(app, id, ConnState::Connected);
+}
+pub(crate) fn emit_data(app: &AppHandle, id: &str, bytes: Vec<u8>) {
+    let _ = app.emit("ssh://data", DataEvent { id: id.to_string(), bytes });
 }
 
 /// russh client handler. Carries what `check_server_key` needs to run TOFU:
@@ -293,7 +310,25 @@ pub async fn ssh_connect(
     let id = format!("s{}", NEXT_ID.fetch_add(1, Ordering::Relaxed));
     state.sessions.lock().unwrap().insert(
         id.clone(),
-        Session { tx: None, chain, log_name },
+        Session { tx: None, transport: Transport::Ssh(chain), log_name },
+    );
+    start_session(app, id.clone(), state.sessions.clone(), state.pending.clone());
+    Ok(id)
+}
+
+/// Open a raw Telnet session (no auth, no encryption). Uses the same session map
+/// and events as SSH, so ssh_write/ssh_resize/ssh_disconnect work uniformly.
+#[tauri::command]
+pub fn telnet_connect(
+    app: AppHandle,
+    state: State<'_, SshState>,
+    host: String,
+    port: u16,
+) -> Result<String, String> {
+    let id = format!("s{}", NEXT_ID.fetch_add(1, Ordering::Relaxed));
+    state.sessions.lock().unwrap().insert(
+        id.clone(),
+        Session { tx: None, transport: Transport::Telnet(host, port), log_name: None },
     );
     start_session(app, id.clone(), state.sessions.clone(), state.pending.clone());
     Ok(id)
@@ -324,8 +359,8 @@ pub fn ssh_host_key_decision(state: State<'_, SshState>, id: String, accept: boo
 /// Spawn the async task that owns the russh session for `id`, wiring a fresh
 /// input channel. Reads the retained creds from the map.
 fn start_session(app: AppHandle, id: String, sessions: Sessions, pending: Pending) {
-    let (chain, log_name) = match sessions.lock().unwrap().get(&id) {
-        Some(s) => (s.chain.clone(), s.log_name.clone()),
+    let (transport, log_name) = match sessions.lock().unwrap().get(&id) {
+        Some(s) => (s.transport.clone(), s.log_name.clone()),
         None => return,
     };
     let (tx, rx) = mpsc::unbounded_channel::<SessionInput>();
@@ -335,7 +370,12 @@ fn start_session(app: AppHandle, id: String, sessions: Sessions, pending: Pendin
     }
 
     tauri::async_runtime::spawn(async move {
-        let result = run_session(&app, &id, chain, rx, pending.clone(), log_name).await;
+        let result = match transport {
+            Transport::Ssh(chain) => {
+                run_session(&app, &id, chain, rx, pending.clone(), log_name).await
+            }
+            Transport::Telnet(host, port) => crate::telnet::run(&app, &id, host, port, rx).await,
+        };
         pending.lock().unwrap().remove(&id); // clear any un-answered prompt
         // Never leak credentials into the error surfaced to the UI.
         let final_state = match result {

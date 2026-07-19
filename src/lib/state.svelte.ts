@@ -7,6 +7,7 @@ export type Host = {
   hostname: string
   port: number
   user: string
+  protocol: 'ssh' | 'telnet'
   tags: string[]
   color: string | null
   favorite: boolean
@@ -30,6 +31,7 @@ export function blankHost(): Host {
     hostname: '',
     port: 22,
     user: '',
+    protocol: 'ssh',
     tags: [],
     color: null,
     favorite: false,

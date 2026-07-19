@@ -9,6 +9,7 @@ mod sftp;
 mod snippets;
 mod ssh;
 mod sshconfig;
+mod telnet;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,6 +24,7 @@ pub fn run() {
             ssh::ssh_disconnect,
             ssh::ssh_reconnect,
             ssh::ssh_host_key_decision,
+            ssh::telnet_connect,
             hosts::hosts_list,
             hosts::host_save,
             hosts::host_delete,
