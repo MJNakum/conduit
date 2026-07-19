@@ -256,6 +256,27 @@ export async function deleteHost(id: string) {
   store.hosts = store.hosts.filter((h) => h.id !== id)
 }
 
+// ---- Saved views (host-list filters) --------------------------------------
+// A view is a named search + tag filter, so only the relevant subset shows.
+// UI pref, kept in localStorage (on-device).
+export type View = { id: string; name: string; tags: string[]; search: string }
+export const viewsStore = $state({
+  list: JSON.parse(localStorage.getItem('ssh.views') ?? '[]') as View[],
+})
+function persistViews() {
+  localStorage.setItem('ssh.views', JSON.stringify(viewsStore.list))
+}
+export function saveView(v: View) {
+  const i = viewsStore.list.findIndex((x) => x.id === v.id)
+  if (i >= 0) viewsStore.list[i] = v
+  else viewsStore.list.push(v)
+  persistViews()
+}
+export function deleteView(id: string) {
+  viewsStore.list = viewsStore.list.filter((v) => v.id !== id)
+  persistViews()
+}
+
 // ---- Tabs & panes ---------------------------------------------------------
 // Tab 0 (the pinned "All Sessions" host list) is not a Tab object; it's the
 // `active === 'home'` state. Each tab holds 1/2/4 panes; every pane is its own
