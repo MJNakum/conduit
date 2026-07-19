@@ -3,7 +3,7 @@
   import { ShieldAlert } from '@lucide/svelte'
   import Terminal from './Terminal.svelte'
   import Stepper from './Stepper.svelte'
-  import { store, hostIcon, resolveJumps, type Pane } from './state.svelte'
+  import { store, broadcast, hostIcon, resolveJumps, type Pane } from './state.svelte'
   import { resolveScheme, xtermTheme, settings } from './theme.svelte'
 
   let {
@@ -93,9 +93,16 @@
   })
 
   const overlay = $derived(pane.phase !== 'connected')
+  // Amber outline when this connected pane is a live broadcast target (design §9).
+  const broadcasting = $derived(
+    broadcast.on &&
+      pane.phase === 'connected' &&
+      !!pane.sessionId &&
+      !broadcast.exclude.includes(pane.sessionId),
+  )
 </script>
 
-<div class="pane" class:active onmousedowncapture={onfocus} role="presentation">
+<div class="pane" class:active class:broadcasting onmousedowncapture={onfocus} role="presentation">
   {#if !pane.host}
     <!-- Empty split pane: pick a host. -->
     <div class="pick">
@@ -202,6 +209,10 @@
   }
   .pane.active {
     border-color: hsl(var(--primary));
+  }
+  .pane.broadcasting {
+    border-color: hsl(var(--amber));
+    box-shadow: inset 0 0 0 1px hsl(var(--amber));
   }
   .panehead {
     height: 28px;

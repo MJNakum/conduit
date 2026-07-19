@@ -232,6 +232,29 @@ export function closeTab(key: string) {
   if (ui.active === key) ui.active = 'home'
 }
 
+// ---- Broadcast input ------------------------------------------------------
+// Type once, send to many. `exclude` drops session ids from the fan-out; `once`
+// auto-exits after a single send. Deliberately loud (see design §9).
+export const broadcast = $state({ on: false, exclude: [] as string[], once: false })
+
+// Every currently connected session, across all tabs/panes.
+export function connectedSessions(): { id: string; name: string }[] {
+  const out: { id: string; name: string }[] = []
+  for (const t of ui.tabs)
+    for (const p of t.panes)
+      if (p.sessionId && p.phase === 'connected')
+        out.push({ id: p.sessionId, name: p.host?.name ?? '(host)' })
+  return out
+}
+
+export const broadcastTargets = () =>
+  connectedSessions().filter((s) => !broadcast.exclude.includes(s.id))
+
+export function broadcastLine(text: string) {
+  for (const t of broadcastTargets()) invoke('ssh_write', { id: t.id, data: text + '\r' })
+  if (broadcast.once) broadcast.on = false
+}
+
 // The host that titles a tab: its first pane that has one.
 export const tabHost = (tab: Tab): Host | null => tab.panes.find((p) => p.host)?.host ?? null
 
