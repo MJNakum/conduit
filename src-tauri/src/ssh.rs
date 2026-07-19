@@ -40,6 +40,8 @@ pub(crate) struct Hop {
 struct Session {
     tx: Option<mpsc::UnboundedSender<SessionInput>>,
     chain: Vec<Hop>,
+    // Host name to log this session's output under, or None if logging is off.
+    log_name: Option<String>,
 }
 
 /// A jump hop supplied by the webview (references a saved host). Its secret is
@@ -243,6 +245,7 @@ pub async fn ssh_connect(
     secret: Option<String>,
     save: bool,
     jumps: Vec<JumpInput>,
+    log_name: Option<String>,
 ) -> Result<String, String> {
     let secret = match secret {
         Some(s) => {
@@ -290,7 +293,7 @@ pub async fn ssh_connect(
     let id = format!("s{}", NEXT_ID.fetch_add(1, Ordering::Relaxed));
     state.sessions.lock().unwrap().insert(
         id.clone(),
-        Session { tx: None, chain },
+        Session { tx: None, chain, log_name },
     );
     start_session(app, id.clone(), state.sessions.clone(), state.pending.clone());
     Ok(id)
@@ -321,8 +324,8 @@ pub fn ssh_host_key_decision(state: State<'_, SshState>, id: String, accept: boo
 /// Spawn the async task that owns the russh session for `id`, wiring a fresh
 /// input channel. Reads the retained creds from the map.
 fn start_session(app: AppHandle, id: String, sessions: Sessions, pending: Pending) {
-    let chain = match sessions.lock().unwrap().get(&id) {
-        Some(s) => s.chain.clone(),
+    let (chain, log_name) = match sessions.lock().unwrap().get(&id) {
+        Some(s) => (s.chain.clone(), s.log_name.clone()),
         None => return,
     };
     let (tx, rx) = mpsc::unbounded_channel::<SessionInput>();
@@ -332,7 +335,7 @@ fn start_session(app: AppHandle, id: String, sessions: Sessions, pending: Pendin
     }
 
     tauri::async_runtime::spawn(async move {
-        let result = run_session(&app, &id, chain, rx, pending.clone()).await;
+        let result = run_session(&app, &id, chain, rx, pending.clone(), log_name).await;
         pending.lock().unwrap().remove(&id); // clear any un-answered prompt
         // Never leak credentials into the error surfaced to the UI.
         let final_state = match result {
@@ -467,7 +470,10 @@ async fn run_session(
     chain: Vec<Hop>,
     mut rx: mpsc::UnboundedReceiver<SessionInput>,
     pending: Pending,
+    log_name: Option<String>,
 ) -> Result<Option<String>, String> {
+    // Open a session log if the host enabled logging (tee'd in the Data arm below).
+    let mut log = log_name.as_deref().and_then(|n| crate::logging::open_log(app, n));
     emit_state(app, id, ConnState::Connecting);
     // `_bastions` must stay in scope for the session's life (they back any jumps).
     let (handle, _bastions) =
@@ -496,6 +502,10 @@ async fn run_session(
         tokio::select! {
             msg = channel.wait() => match msg {
                 Some(ChannelMsg::Data { data }) => {
+                    if let Some(f) = log.as_mut() {
+                        use std::io::Write;
+                        let _ = f.write_all(&data);
+                    }
                     let _ = app.emit("ssh://data", DataEvent {
                         id: id.to_string(),
                         bytes: data.to_vec(),

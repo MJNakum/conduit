@@ -2,6 +2,7 @@ mod forwards;
 mod hosts;
 mod keys;
 mod knownhosts;
+mod logging;
 mod secrets;
 mod ssh;
 mod sshconfig;
@@ -36,7 +37,8 @@ pub fn run() {
             forwards::forward_save,
             forwards::forward_delete,
             forwards::forward_start,
-            forwards::forward_stop
+            forwards::forward_stop,
+            logging::logs_dir_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
