@@ -24,7 +24,7 @@ enum SessionInput {
 /// (the target); with ProxyJump the chain is [bastion-1, …, target]. Secrets
 /// live in RAM only for the active process; their durable home is the keychain.
 #[derive(Clone)]
-struct Hop {
+pub(crate) struct Hop {
     host: String,
     port: u16,
     user: String,
@@ -59,7 +59,12 @@ pub struct JumpInput {
 type Sessions = Arc<Mutex<HashMap<String, Session>>>;
 /// Pending host-key Accept/Reject decisions, keyed by session id. `check_server_key`
 /// parks a receiver here; `ssh_host_key_decision` from the webview fulfills it.
-type Pending = Arc<Mutex<HashMap<String, oneshot::Sender<bool>>>>;
+pub(crate) type Pending = Arc<Mutex<HashMap<String, oneshot::Sender<bool>>>>;
+
+/// A throwaway pending-map for non-interactive connects (forwards) that never prompt.
+pub(crate) fn dummy_pending() -> Pending {
+    Arc::new(Mutex::new(HashMap::new()))
+}
 
 #[derive(Default)]
 pub struct SshState {
@@ -125,12 +130,17 @@ fn emit_state(app: &AppHandle, id: &str, state: ConnState) {
 /// russh client handler. Carries what `check_server_key` needs to run TOFU:
 /// where to emit the prompt, which session/host it's for, and how to await the
 /// webview's Accept/Reject.
-struct Handler {
+pub(crate) struct Handler {
     app: AppHandle,
     id: String,
     host: String,
     port: u16,
     pending: Pending,
+    // Interactive sessions prompt for unknown/changed host keys; background
+    // forwards can't, so they reject instead (require a prior trusted connect).
+    interactive: bool,
+    // For remote (-R) forwards: where inbound forwarded channels are piped to.
+    forward_target: Option<(String, u16)>,
 }
 
 impl client::Handler for Handler {
@@ -151,6 +161,12 @@ impl client::Handler for Handler {
             if k.fingerprint == fingerprint {
                 return Ok(true); // known and unchanged
             }
+        }
+
+        // Non-interactive (forwards): never block on a UI prompt — reject an
+        // untrusted key. The user connects the host once to establish trust.
+        if !self.interactive {
+            return Ok(false);
         }
 
         // Unknown or changed: park a decision channel, emit the prompt, wait.
@@ -183,6 +199,30 @@ impl client::Handler for Handler {
             );
         }
         Ok(accepted)
+    }
+
+    // Remote (-R) forward delivery: the server opens a channel per inbound
+    // connection to the forwarded port. Accept it and pipe to the local target.
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: russh::Channel<russh::client::Msg>,
+        _connected_address: &str,
+        _connected_port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: russh::client::ChannelOpenHandle,
+        _session: &mut russh::client::Session,
+    ) -> Result<(), Self::Error> {
+        let _ = reply.accept().await;
+        if let Some((host, port)) = self.forward_target.clone() {
+            tokio::spawn(async move {
+                if let Ok(mut tcp) = tokio::net::TcpStream::connect((host.as_str(), port)).await {
+                    let mut stream = channel.into_stream();
+                    let _ = tokio::io::copy_bidirectional(&mut tcp, &mut stream).await;
+                }
+            });
+        }
+        Ok(())
     }
 }
 
@@ -338,6 +378,89 @@ async fn authenticate(handle: &mut client::Handle<Handler>, hop: &Hop) -> Result
     }
 }
 
+/// Connect + authenticate a hop chain, returning the authenticated target handle
+/// plus the bastion handles (kept alive so their transports back the tunnels).
+/// `interactive` drives host-key prompting; `forward_target` (remote forwards)
+/// and `keepalive` (long-lived forwards) tune the target handler / config.
+pub(crate) async fn connect_chain(
+    app: &AppHandle,
+    id: &str,
+    chain: &[Hop],
+    pending: Pending,
+    interactive: bool,
+    forward_target: Option<(String, u16)>,
+    keepalive: bool,
+) -> Result<(client::Handle<Handler>, Vec<client::Handle<Handler>>), String> {
+    let mut cfg = client::Config::default();
+    if keepalive {
+        cfg.keepalive_interval = Some(std::time::Duration::from_secs(30));
+    }
+    let config = Arc::new(cfg);
+    let n = chain.len();
+    let mk = |hop: &Hop, fwd: Option<(String, u16)>| Handler {
+        app: app.clone(),
+        id: id.to_string(),
+        host: hop.host.clone(),
+        port: hop.port,
+        pending: pending.clone(),
+        interactive,
+        forward_target: fwd,
+    };
+    let emit_auth = |hop: &Hop| {
+        if interactive {
+            let method = if hop.auth == "key" { "publickey" } else { "password" };
+            emit_state(app, id, ConnState::Authenticating { method: method.into() });
+        }
+    };
+
+    // First hop over TCP; each subsequent hop is tunnelled through the previous
+    // via a direct-tcpip channel. Only the last (target) hop carries forward_target.
+    let first = &chain[0];
+    let fwd0 = if n == 1 { forward_target.clone() } else { None };
+    let mut handle = client::connect(config.clone(), (first.host.as_str(), first.port), mk(first, fwd0))
+        .await
+        .map_err(|e| format!("connect failed: {e}"))?;
+    emit_auth(first);
+    authenticate(&mut handle, first).await?;
+
+    let mut bastions: Vec<client::Handle<Handler>> = Vec::new();
+    for (i, hop) in chain.iter().enumerate().skip(1) {
+        let channel = handle
+            .channel_open_direct_tcpip(hop.host.clone(), hop.port as u32, "127.0.0.1", 0)
+            .await
+            .map_err(|e| format!("jump to {}: {e}", hop.host))?;
+        bastions.push(handle); // keep the previous hop's transport alive
+        let fwd = if i == n - 1 { forward_target.clone() } else { None };
+        handle = client::connect_stream(config.clone(), channel.into_stream(), mk(hop, fwd))
+            .await
+            .map_err(|e| format!("connect via jump to {}: {e}", hop.host))?;
+        emit_auth(hop);
+        authenticate(&mut handle, hop).await?;
+    }
+    Ok((handle, bastions))
+}
+
+/// Build a connect chain for a saved host id: its jump hosts (resolved from the
+/// host store) followed by the host itself, each hop's secret pulled from the
+/// keychain. Used by background features (forwards) that connect on their own.
+pub(crate) fn build_chain(app: &AppHandle, host_id: &str) -> Result<Vec<Hop>, String> {
+    let hosts = crate::hosts::read_all(app)?;
+    let find = |id: &str| hosts.iter().find(|h| h.id == id);
+    let target = find(host_id).ok_or("host not found")?;
+    let hop_of = |h: &crate::hosts::Host| Hop {
+        host: h.hostname.clone(),
+        port: h.port,
+        user: h.user.clone(),
+        auth: h.auth.clone(),
+        key_id: h.key_id.clone(),
+        identity_file: h.identity_file.clone(),
+        secret: crate::secrets::get(&h.id).unwrap_or_default(),
+    };
+    let mut chain: Vec<Hop> = target.jumps.iter().filter_map(|jid| find(jid)).map(hop_of).collect();
+    chain.push(hop_of(target));
+    Ok(chain)
+}
+
 async fn run_session(
     app: &AppHandle,
     id: &str,
@@ -345,44 +468,10 @@ async fn run_session(
     mut rx: mpsc::UnboundedReceiver<SessionInput>,
     pending: Pending,
 ) -> Result<Option<String>, String> {
-    let config = Arc::new(client::Config::default());
-    let mk_handler = |hop: &Hop| Handler {
-        app: app.clone(),
-        id: id.to_string(),
-        host: hop.host.clone(),
-        port: hop.port,
-        pending: pending.clone(),
-    };
-    let emit_auth = |hop: &Hop| {
-        let method = if hop.auth == "key" { "publickey" } else { "password" };
-        emit_state(app, id, ConnState::Authenticating { method: method.into() });
-    };
-
     emit_state(app, id, ConnState::Connecting);
-
-    // First hop over TCP; each subsequent hop is tunnelled through the previous
-    // via a direct-tcpip channel. Intermediate handles are kept alive in `bastions`
-    // so their transports (which back the tunnels) don't drop.
-    let first = &chain[0];
-    let mut handle = client::connect(config.clone(), (first.host.as_str(), first.port), mk_handler(first))
-        .await
-        .map_err(|e| format!("connect failed: {e}"))?;
-    emit_auth(first);
-    authenticate(&mut handle, first).await?;
-
-    let mut bastions: Vec<client::Handle<Handler>> = Vec::new();
-    for hop in &chain[1..] {
-        let channel = handle
-            .channel_open_direct_tcpip(hop.host.clone(), hop.port as u32, "127.0.0.1", 0)
-            .await
-            .map_err(|e| format!("jump to {}: {e}", hop.host))?;
-        bastions.push(handle); // keep the previous hop's transport alive
-        handle = client::connect_stream(config.clone(), channel.into_stream(), mk_handler(hop))
-            .await
-            .map_err(|e| format!("connect via jump to {}: {e}", hop.host))?;
-        emit_auth(hop);
-        authenticate(&mut handle, hop).await?;
-    }
+    // `_bastions` must stay in scope for the session's life (they back any jumps).
+    let (handle, _bastions) =
+        connect_chain(app, id, &chain, pending, true, None, false).await?;
 
     let mut channel = handle
         .channel_open_session()

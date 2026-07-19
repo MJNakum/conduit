@@ -45,6 +45,59 @@ export function blankHost(): Host {
   }
 }
 
+// ---- Port forwards --------------------------------------------------------
+export type Forward = {
+  id: string
+  name: string
+  hostId: string
+  kind: 'local' | 'remote' | 'dynamic'
+  bindAddr: string
+  bindPort: number
+  destHost: string
+  destPort: number
+}
+
+export function blankForward(): Forward {
+  return {
+    id: crypto.randomUUID(),
+    name: '',
+    hostId: '',
+    kind: 'local',
+    bindAddr: '127.0.0.1',
+    bindPort: 8080,
+    destHost: '',
+    destPort: 0,
+  }
+}
+
+// list = saved configs; status = live per-forward state (not persisted).
+export const forwardsStore = $state({
+  list: [] as Forward[],
+  status: {} as Record<string, { state: string; message?: string }>,
+})
+
+export async function loadForwards() {
+  forwardsStore.list = await invoke<Forward[]>('forwards_list')
+}
+export async function saveForward(f: Forward) {
+  const saved = await invoke<Forward>('forward_save', { forward: f })
+  const i = forwardsStore.list.findIndex((x) => x.id === saved.id)
+  if (i >= 0) forwardsStore.list[i] = saved
+  else forwardsStore.list.push(saved)
+}
+export async function deleteForward(id: string) {
+  await invoke('forward_delete', { id })
+  forwardsStore.list = forwardsStore.list.filter((f) => f.id !== id)
+  delete forwardsStore.status[id]
+}
+export const startForward = (id: string) => invoke('forward_start', { id })
+export const stopForward = (id: string) => invoke('forward_stop', { id })
+
+// forward://state payload router.
+export function applyForwardState(id: string, state: string, message?: string) {
+  forwardsStore.status[id] = { state, message }
+}
+
 // ---- ssh_config import / export (no lock-in) ------------------------------
 export const importSshConfig = (path?: string) =>
   invoke<Host[]>('ssh_config_import', { path: path ?? null })

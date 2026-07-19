@@ -1,3 +1,4 @@
+mod forwards;
 mod hosts;
 mod keys;
 mod knownhosts;
@@ -9,6 +10,7 @@ mod sshconfig;
 pub fn run() {
     tauri::Builder::default()
         .manage(ssh::SshState::default())
+        .manage(forwards::ForwardState::default())
         .invoke_handler(tauri::generate_handler![
             ssh::ssh_connect,
             ssh::ssh_write,
@@ -29,7 +31,12 @@ pub fn run() {
             secrets::secret_delete,
             sshconfig::ssh_config_import,
             sshconfig::ssh_config_export,
-            sshconfig::ssh_config_export_write
+            sshconfig::ssh_config_export_write,
+            forwards::forwards_list,
+            forwards::forward_save,
+            forwards::forward_delete,
+            forwards::forward_start,
+            forwards::forward_stop
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

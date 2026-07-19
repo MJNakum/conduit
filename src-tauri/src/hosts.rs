@@ -64,7 +64,7 @@ fn store_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("hosts.json"))
 }
 
-fn read_all(app: &AppHandle) -> Result<Vec<Host>, String> {
+pub(crate) fn read_all(app: &AppHandle) -> Result<Vec<Host>, String> {
     let path = store_path(app)?;
     match fs::read(&path) {
         Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| format!("parse hosts.json: {e}")),

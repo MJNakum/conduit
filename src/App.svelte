@@ -17,8 +17,10 @@
   import TabView from './lib/TabView.svelte'
   import Palette from './lib/Palette.svelte'
   import KeyManager from './lib/KeyManager.svelte'
+  import PortForwards from './lib/PortForwards.svelte'
   import Appearance from './lib/Appearance.svelte'
   import { settings, applyAppTheme } from './lib/theme.svelte'
+  import { loadForwards, applyForwardState } from './lib/state.svelte'
   import {
     ui,
     loadHosts,
@@ -37,14 +39,13 @@
   let paletteOpen = $state(false)
   let appearanceOpen = $state(false)
   // Which home-view section is showing (only when no terminal tab is active).
-  let section = $state<'hosts' | 'keys'>('hosts')
+  let section = $state<'hosts' | 'keys' | 'forwards'>('hosts')
 
-  // Sidebar sections. Hosts + Keys are wired — Snippets/Port Forwards/History
+  // Sidebar sections. Hosts + Keys + Port Forwards are wired — Snippets/History
   // and the Groups tree are inert placeholders for their later phases
   // (see docs/mvp-plan.md), shown so the shell has correct proportions.
   const laterSections = [
     { label: 'Snippets', icon: Zap },
-    { label: 'Port Forwards', icon: ArrowRightLeft },
     { label: 'History', icon: History },
   ]
 
@@ -52,7 +53,11 @@
     applyAppTheme()
     loadHosts()
     loadKeys()
+    loadForwards()
     listen<StatePayload>('ssh://state', (e) => applyState(e.payload))
+    listen<{ id: string; state: string; message?: string }>('forward://state', (e) =>
+      applyForwardState(e.payload.id, e.payload.state, e.payload.message),
+    )
     // Cmd+K toggles the command palette. Captured at window level (works over
     // xterm too, since it fires before the terminal sees the key).
     const onKey = (e: KeyboardEvent) => {
@@ -146,6 +151,13 @@
         >
           <KeyRound size={15} /> Keys
         </button>
+        <button
+          class="side-item"
+          class:active={ui.active === 'home' && section === 'forwards'}
+          onclick={() => { section = 'forwards'; activate('home') }}
+        >
+          <ArrowRightLeft size={15} /> Port Forwards
+        </button>
         {#each laterSections as s}
           {@const SIcon = s.icon}
           <div class="side-item soon" aria-disabled="true" title="Coming in a later phase">
@@ -171,6 +183,8 @@
       <div class="page" class:hidden={ui.active !== 'home'}>
         {#if section === 'keys'}
           <KeyManager />
+        {:else if section === 'forwards'}
+          <PortForwards />
         {:else}
           <HostList onopen={open} />
         {/if}
