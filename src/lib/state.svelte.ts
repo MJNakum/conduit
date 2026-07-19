@@ -16,6 +16,7 @@ export type Host = {
   keyId: string | null // managed key from the Key Manager
   identityFile: string | null // or a raw private-key path
   jumps: string[] // ordered saved-host ids to ProxyJump through (bastion-1 … target)
+  raw: string[] // verbatim ssh_config lines we don't model, kept for round-trip
 }
 
 export function blankHost(): Host {
@@ -34,8 +35,16 @@ export function blankHost(): Host {
     keyId: null,
     identityFile: null,
     jumps: [],
+    raw: [],
   }
 }
+
+// ---- ssh_config import / export (no lock-in) ------------------------------
+export const importSshConfig = (path?: string) =>
+  invoke<Host[]>('ssh_config_import', { path: path ?? null })
+export const exportSshConfig = () => invoke<string>('ssh_config_export')
+export const writeSshConfig = (path: string, text: string) =>
+  invoke('ssh_config_export_write', { path, text })
 
 // Resolve a host's jump chain (saved-host ids) into hop descriptors the backend
 // can connect through; each jump's secret is pulled from the keychain by hostId.

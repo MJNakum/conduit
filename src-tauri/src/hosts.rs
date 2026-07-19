@@ -28,12 +28,19 @@ pub struct Host {
     // Auth: "password" | "key". Secrets never live here — only in the keychain.
     #[serde(default = "default_auth")]
     pub auth: String,
-    // ssh_config-native IdentityFile path; used when auth == "key".
+    // Managed key (Key Manager) id, when auth == "key". Secret stays in Keychain.
+    #[serde(default, rename = "keyId")]
+    pub key_id: Option<String>,
+    // ssh_config-native IdentityFile path; used when auth == "key" without a managed key.
     #[serde(default, rename = "identityFile")]
     pub identity_file: Option<String>,
     // Ordered saved-host ids to ProxyJump through (bastion-1 … target).
     #[serde(default)]
     pub jumps: Vec<String>,
+    // Verbatim ssh_config option lines we don't model, preserved for lossless
+    // round-trip on export (each like "ForwardAgent yes").
+    #[serde(default)]
+    pub raw: Vec<String>,
 }
 
 fn default_auth() -> String {
