@@ -20,6 +20,7 @@ export type Host = {
   scheme: string | null // per-connection terminal scheme; null = global default
   font: string | null
   fontSize: number | null
+  logging: boolean // auto-save this host's terminal output to a log file
 }
 
 export function blankHost(): Host {
@@ -42,6 +43,7 @@ export function blankHost(): Host {
     scheme: null,
     font: null,
     fontSize: null,
+    logging: false,
   }
 }
 

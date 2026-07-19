@@ -53,6 +53,7 @@
         secret: hasSaved ? null : secretVal,
         save: !hasSaved && saveSecret,
         jumps: resolveJumps(pane.host),
+        logName: pane.host.logging ? pane.host.name : null,
       })
       secretVal = ''
     } catch (e) {

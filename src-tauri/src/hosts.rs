@@ -49,6 +49,9 @@ pub struct Host {
     pub font: Option<String>,
     #[serde(default, rename = "fontSize")]
     pub font_size: Option<u16>,
+    // Auto-save this host's terminal output to a per-session log file.
+    #[serde(default)]
+    pub logging: bool,
 }
 
 fn default_auth() -> String {

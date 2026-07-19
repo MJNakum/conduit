@@ -1,6 +1,7 @@
 mod hosts;
 mod keys;
 mod knownhosts;
+mod logging;
 mod secrets;
 mod ssh;
 mod sshconfig;
@@ -29,7 +30,8 @@ pub fn run() {
             secrets::secret_delete,
             sshconfig::ssh_config_import,
             sshconfig::ssh_config_export,
-            sshconfig::ssh_config_export_write
+            sshconfig::ssh_config_export_write,
+            logging::logs_dir_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

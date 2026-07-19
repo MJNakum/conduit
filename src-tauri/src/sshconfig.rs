@@ -28,6 +28,7 @@ fn blank(alias: &str) -> Host {
         scheme: None,
         font: None,
         font_size: None,
+        logging: false,
     }
 }
 

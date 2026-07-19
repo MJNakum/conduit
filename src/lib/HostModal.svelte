@@ -63,6 +63,10 @@
           <label class="check"><input id="f-recon" type="checkbox" bind:checked={draft.autoReconnect} /> Reconnect on drop</label>
         </div>
       </div>
+      <div class="field">
+        <label for="f-log">Session logging</label>
+        <label class="check"><input id="f-log" type="checkbox" bind:checked={draft.logging} /> Auto-save terminal output to a log file</label>
+      </div>
       <div class="grid2">
         <div class="field">
           <label for="f-auth">Auth</label>
