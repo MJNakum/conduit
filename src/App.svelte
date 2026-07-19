@@ -37,6 +37,7 @@
     activeCount,
     hostIcon,
     tabHost,
+    groupNodes,
     type Host,
     type Tab,
     type StatePayload,
@@ -147,8 +148,8 @@
       <div class="side-scroll">
         <button
           class="side-item"
-          class:active={ui.active === 'home' && section === 'hosts'}
-          onclick={() => { section = 'hosts'; activate('home') }}
+          class:active={ui.active === 'home' && section === 'hosts' && ui.group === null}
+          onclick={() => { section = 'hosts'; ui.group = null; activate('home') }}
         >
           <Server size={15} /> Hosts
         </button>
@@ -180,12 +181,20 @@
           </div>
         {/each}
         <div class="side-head">Groups</div>
-        <div class="side-item soon" aria-disabled="true" title="Coming in a later phase">
-          <ChevronRight size={15} /> Production
-        </div>
-        <div class="side-item soon" aria-disabled="true" title="Coming in a later phase">
-          <ChevronRight size={15} /> Clients
-        </div>
+        {#if groupNodes().length === 0}
+          <div class="side-item soon" aria-disabled="true">Set a host's Group to build the tree</div>
+        {:else}
+          {#each groupNodes() as g (g.path)}
+            <button
+              class="side-item"
+              style:padding-left={`${9 + g.depth * 14}px`}
+              class:active={ui.active === 'home' && section === 'hosts' && ui.group === g.path}
+              onclick={() => { section = 'hosts'; ui.group = g.path; activate('home') }}
+            >
+              <ChevronRight size={15} /> {g.label}
+            </button>
+          {/each}
+        {/if}
       </div>
       <div class="vault">
         <Lock size={14} color="hsl(var(--primary))" /> Vault unlocked

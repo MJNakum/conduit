@@ -13,6 +13,7 @@
     viewsStore,
     saveView,
     deleteView,
+    inGroup,
     type Host,
     type View,
   } from './state.svelte'
@@ -32,6 +33,7 @@
   const allTags = $derived([...new Set(store.hosts.flatMap((h) => h.tags))].sort())
 
   function match(h: Host): boolean {
+    if (ui.group && !inGroup(h, ui.group)) return false
     if (activeTags.length && !activeTags.every((t) => h.tags.includes(t))) return false
     if (!q) return true
     return (

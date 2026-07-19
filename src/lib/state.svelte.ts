@@ -277,6 +277,24 @@ export function deleteView(id: string) {
   persistViews()
 }
 
+// ---- Nested groups --------------------------------------------------------
+// Host.group is a "/"-separated path (e.g. "Clients/Acme"); the sidebar renders
+// the derived tree. Selecting a group filters the host list to it + descendants.
+export function groupNodes(): { path: string; depth: number; label: string }[] {
+  const set = new Set<string>()
+  for (const h of store.hosts) {
+    if (!h.group) continue
+    const parts = h.group.split('/').map((s) => s.trim()).filter(Boolean)
+    for (let i = 0; i < parts.length; i++) set.add(parts.slice(0, i + 1).join('/'))
+  }
+  return [...set]
+    .sort()
+    .map((p) => ({ path: p, depth: p.split('/').length - 1, label: p.split('/').pop()! }))
+}
+
+// Is host `h` inside group path `g` (exact or a descendant)?
+export const inGroup = (h: Host, g: string) => !!h.group && (h.group === g || h.group.startsWith(g + '/'))
+
 // ---- Tabs & panes ---------------------------------------------------------
 // Tab 0 (the pinned "All Sessions" host list) is not a Tab object; it's the
 // `active === 'home'` state. Each tab holds 1/2/4 panes; every pane is its own
@@ -323,9 +341,14 @@ function newPane(host: Host | null): Pane {
   }
 }
 
-// `lastSession` = the most-recently-active connected pane's session id; snippet
-// "Run" targets it (so it works even while the Snippets section is showing).
-export const ui = $state({ tabs: [] as Tab[], active: 'home' as string, lastSession: null as string | null })
+// `lastSession` = the most-recently-active connected pane's session id (snippet
+// "Run" targets it). `group` = selected group-path filter for the host list.
+export const ui = $state({
+  tabs: [] as Tab[],
+  active: 'home' as string,
+  lastSession: null as string | null,
+  group: null as string | null,
+})
 
 export function openTab(host: Host): Tab {
   const pane = newPane(host)

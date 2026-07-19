@@ -52,7 +52,10 @@
         <div class="field"><label for="f-host">Address</label><input id="f-host" class="mono" bind:value={draft.hostname} placeholder="example.com" /></div>
         <div class="field"><label for="f-user">Username</label><input id="f-user" class="mono" bind:value={draft.user} placeholder="root" /></div>
       </div>
-      <div class="field"><label for="f-tags">Tags</label><input id="f-tags" bind:value={tagsText} placeholder="prod, web" /></div>
+      <div class="grid2">
+        <div class="field"><label for="f-tags">Tags</label><input id="f-tags" bind:value={tagsText} placeholder="prod, web" /></div>
+        <div class="field"><label for="f-group">Group</label><input id="f-group" value={draft.group ?? ''} oninput={(e) => (draft.group = (e.currentTarget as HTMLInputElement).value || null)} placeholder="Clients/Acme" /></div>
+      </div>
       <div class="grid2">
         <div class="field">
           <label for="f-color">Accent color</label>
