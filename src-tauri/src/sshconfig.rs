@@ -25,6 +25,9 @@ fn blank(alias: &str) -> Host {
         identity_file: None,
         jumps: Vec::new(),
         raw: Vec::new(),
+        scheme: None,
+        font: None,
+        font_size: None,
     }
 }
 

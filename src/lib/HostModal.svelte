@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Pencil, Plus, X } from '@lucide/svelte'
   import { saveHost, keysStore, store, type Host } from './state.svelte'
+  import { allSchemes } from './theme.svelte'
 
   let { host, onclose }: { host: Host; onclose: () => void } = $props()
 
@@ -107,6 +108,25 @@
         {#if otherHosts.length > draft.jumps.length}
           <button type="button" class="addjump" onclick={addJump}><Plus size={13} /> Add jump</button>
         {/if}
+      </div>
+      <div class="grid3">
+        <div class="field">
+          <label for="f-scheme">Terminal theme</label>
+          <select id="f-scheme" value={draft.scheme ?? ''} onchange={(e) => (draft.scheme = (e.currentTarget as HTMLSelectElement).value || null)}>
+            <option value="">Global default</option>
+            {#each allSchemes() as s (s.name)}
+              <option value={s.name}>{s.name}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-font">Font</label>
+          <input id="f-font" class="mono" value={draft.font ?? ''} oninput={(e) => (draft.font = (e.currentTarget as HTMLInputElement).value || null)} placeholder="global" />
+        </div>
+        <div class="field">
+          <label for="f-fsize">Font size</label>
+          <input id="f-fsize" class="mono" type="number" min="8" max="32" value={draft.fontSize ?? ''} oninput={(e) => (draft.fontSize = Number((e.currentTarget as HTMLInputElement).value) || null)} placeholder="13" />
+        </div>
       </div>
     </div>
     <div class="mfoot">

@@ -9,7 +9,18 @@
   import '@xterm/xterm/css/xterm.css'
 
   // The session id returned by ssh_connect; scopes every event to this pane.
-  let { id }: { id: string } = $props()
+  // theme/font come resolved from the pane (per-connection or global default).
+  let {
+    id,
+    theme,
+    fontFamily = 'monospace',
+    fontSize = 13,
+  }: {
+    id: string
+    theme?: Record<string, string>
+    fontFamily?: string
+    fontSize?: number
+  } = $props()
 
   let container: HTMLDivElement
   let searchInput = $state<HTMLInputElement>()
@@ -21,7 +32,7 @@
   const unlisten: UnlistenFn[] = []
 
   onMount(async () => {
-    term = new Terminal({ fontFamily: 'monospace', fontSize: 13, cursorBlink: true })
+    term = new Terminal({ fontFamily, fontSize, cursorBlink: true, theme })
     fit = new FitAddon()
     search = new SearchAddon()
     term.loadAddon(fit)
@@ -71,6 +82,15 @@
     term?.dispose()
   })
 
+  // Live-apply theme/font changes (global toggle or per-connection edit).
+  $effect(() => {
+    if (!term) return
+    term.options.theme = theme
+    term.options.fontFamily = fontFamily
+    term.options.fontSize = fontSize
+    fit?.fit()
+  })
+
   async function openSearch() {
     showSearch = true
     await tick()
@@ -98,7 +118,7 @@
 </script>
 
 <div class="host">
-  <div class="term" bind:this={container}></div>
+  <div class="term" bind:this={container} style:background={theme?.background ?? '#0a0e13'}></div>
   {#if showSearch}
     <div class="search">
       <input

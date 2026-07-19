@@ -17,6 +17,9 @@ export type Host = {
   identityFile: string | null // or a raw private-key path
   jumps: string[] // ordered saved-host ids to ProxyJump through (bastion-1 … target)
   raw: string[] // verbatim ssh_config lines we don't model, kept for round-trip
+  scheme: string | null // per-connection terminal scheme; null = global default
+  font: string | null
+  fontSize: number | null
 }
 
 export function blankHost(): Host {
@@ -36,6 +39,9 @@ export function blankHost(): Host {
     identityFile: null,
     jumps: [],
     raw: [],
+    scheme: null,
+    font: null,
+    fontSize: null,
   }
 }
 
