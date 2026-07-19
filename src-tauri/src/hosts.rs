@@ -41,6 +41,14 @@ pub struct Host {
     // round-trip on export (each like "ForwardAgent yes").
     #[serde(default)]
     pub raw: Vec<String>,
+    // Per-connection terminal theming (design-spec §18). null => use the global
+    // default. Presentation-only; the webview owns the scheme catalog.
+    #[serde(default)]
+    pub scheme: Option<String>,
+    #[serde(default)]
+    pub font: Option<String>,
+    #[serde(default, rename = "fontSize")]
+    pub font_size: Option<u16>,
 }
 
 fn default_auth() -> String {

@@ -17,6 +17,8 @@
   import TabView from './lib/TabView.svelte'
   import Palette from './lib/Palette.svelte'
   import KeyManager from './lib/KeyManager.svelte'
+  import Appearance from './lib/Appearance.svelte'
+  import { settings, applyAppTheme } from './lib/theme.svelte'
   import {
     ui,
     loadHosts,
@@ -33,6 +35,7 @@
   } from './lib/state.svelte'
 
   let paletteOpen = $state(false)
+  let appearanceOpen = $state(false)
   // Which home-view section is showing (only when no terminal tab is active).
   let section = $state<'hosts' | 'keys'>('hosts')
 
@@ -46,6 +49,7 @@
   ]
 
   onMount(() => {
+    applyAppTheme()
     loadHosts()
     loadKeys()
     listen<StatePayload>('ssh://state', (e) => applyState(e.payload))
@@ -183,7 +187,7 @@
   <footer>
     <span>{activeCount()} session{activeCount() === 1 ? '' : 's'} active</span>
     <span class="spacer"></span>
-    <span>Theme: Dark</span>
+    <button class="themebtn" onclick={() => (appearanceOpen = true)}>Theme: {settings.appTheme}</button>
     <span>·</span>
     <span class="mono">⌘K</span>
     <span>command palette</span>
@@ -191,6 +195,9 @@
 
   {#if paletteOpen}
     <Palette onclose={() => (paletteOpen = false)} />
+  {/if}
+  {#if appearanceOpen}
+    <Appearance onclose={() => (appearanceOpen = false)} />
   {/if}
 </main>
 
@@ -391,5 +398,20 @@
   }
   .spacer {
     flex: 1;
+  }
+  .themebtn {
+    background: none;
+    border: none;
+    color: hsl(var(--muted-foreground));
+    font: inherit;
+    font-size: 11.5px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 5px;
+    text-transform: capitalize;
+  }
+  .themebtn:hover {
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
   }
 </style>

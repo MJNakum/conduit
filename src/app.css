@@ -22,6 +22,25 @@
   --radius: 8px;
 }
 
+/* Light theme — applied when the root carries data-theme="light" (set by
+   theme.svelte.ts from the dark/light/system pref). Dark is the default above. */
+:root[data-theme='light'] {
+  --background: 210 20% 98%;
+  --card: 0 0% 100%;
+  --popover: 0 0% 100%;
+  --muted: 220 14% 94%;
+  --muted-foreground: 220 9% 43%;
+  --foreground: 222 24% 16%;
+  --border: 220 13% 87%;
+  --primary: 160 80% 34%;
+  --primary-foreground: 0 0% 100%;
+  --destructive: 0 72% 48%;
+  --ring: 160 80% 38%;
+  --connecting: 210 90% 48%;
+  --amber: 38 92% 45%;
+  --violet: 265 60% 52%;
+}
+
 * {
   box-sizing: border-box;
 }

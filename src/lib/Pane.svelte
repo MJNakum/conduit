@@ -4,6 +4,7 @@
   import Terminal from './Terminal.svelte'
   import Stepper from './Stepper.svelte'
   import { store, hostIcon, resolveJumps, type Pane } from './state.svelte'
+  import { resolveScheme, xtermTheme, settings } from './theme.svelte'
 
   let {
     pane,
@@ -143,7 +144,14 @@
         <span>{pane.host.name}</span>
         <span class="muted mono">{pane.host.user}@{pane.host.hostname}</span>
       </div>
-      <div class="term"><Terminal id={pane.sessionId} /></div>
+      <div class="term">
+        <Terminal
+          id={pane.sessionId}
+          theme={xtermTheme(resolveScheme(pane.host.scheme))}
+          fontFamily={pane.host.font || settings.defaultFont}
+          fontSize={pane.host.fontSize || settings.defaultFontSize}
+        />
+      </div>
       {#if overlay}
         <div class="cover">
           {#if pane.phase === 'hostkey'}
