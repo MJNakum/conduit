@@ -3,6 +3,7 @@ mod hosts;
 mod keys;
 mod knownhosts;
 mod secrets;
+mod sftp;
 mod ssh;
 mod sshconfig;
 
@@ -11,6 +12,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(ssh::SshState::default())
         .manage(forwards::ForwardState::default())
+        .manage(sftp::SftpState::default())
         .invoke_handler(tauri::generate_handler![
             ssh::ssh_connect,
             ssh::ssh_write,
@@ -36,7 +38,12 @@ pub fn run() {
             forwards::forward_save,
             forwards::forward_delete,
             forwards::forward_start,
-            forwards::forward_stop
+            forwards::forward_stop,
+            sftp::sftp_open,
+            sftp::sftp_list,
+            sftp::sftp_download,
+            sftp::sftp_upload,
+            sftp::sftp_close
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
