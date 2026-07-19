@@ -5,6 +5,7 @@ mod knownhosts;
 mod logging;
 mod putty;
 mod secrets;
+mod sftp;
 mod snippets;
 mod ssh;
 mod sshconfig;
@@ -14,6 +15,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(ssh::SshState::default())
         .manage(forwards::ForwardState::default())
+        .manage(sftp::SftpState::default())
         .invoke_handler(tauri::generate_handler![
             ssh::ssh_connect,
             ssh::ssh_write,
@@ -44,7 +46,12 @@ pub fn run() {
             snippets::snippets_list,
             snippets::snippet_save,
             snippets::snippet_delete,
-            putty::putty_import
+            putty::putty_import,
+            sftp::sftp_open,
+            sftp::sftp_list,
+            sftp::sftp_download,
+            sftp::sftp_upload,
+            sftp::sftp_close
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

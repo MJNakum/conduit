@@ -100,6 +100,18 @@ export function applyForwardState(id: string, state: string, message?: string) {
   forwardsStore.status[id] = { state, message }
 }
 
+// ---- SFTP -----------------------------------------------------------------
+export type SftpEntry = { name: string; is_dir: boolean; size: number }
+export const openSftp = (hostId: string) =>
+  invoke<{ id: string; cwd: string }>('sftp_open', { hostId })
+export const sftpList = (id: string, path: string) =>
+  invoke<SftpEntry[]>('sftp_list', { id, path })
+export const sftpDownload = (id: string, remote: string, local: string) =>
+  invoke('sftp_download', { id, remote, local })
+export const sftpUpload = (id: string, local: string, remote: string) =>
+  invoke('sftp_upload', { id, local, remote })
+export const sftpClose = (id: string) => invoke('sftp_close', { id })
+
 // ---- ssh_config import / export (no lock-in) ------------------------------
 export const importSshConfig = (path?: string) =>
   invoke<Host[]>('ssh_config_import', { path: path ?? null })

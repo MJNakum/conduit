@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { Search, Plus, Star, Pencil, Trash2, Rows3, Rows4, Upload, Download, X } from '@lucide/svelte'
+  import { Search, Plus, Star, Pencil, Trash2, Rows3, Rows4, Upload, Download, X, FolderOpen } from '@lucide/svelte'
   import HostModal from './HostModal.svelte'
   import ImportExport from './ImportExport.svelte'
+  import Sftp from './Sftp.svelte'
   import {
     store,
     ui,
@@ -23,6 +24,7 @@
   let filter = $state('')
   let activeTags = $state<string[]>([]) // hosts must carry every active tag
   let editing = $state<Host | null>(null)
+  let sftpHost = $state<Host | null>(null)
   let portio = $state<'import' | 'export' | null>(null)
   let dense = $state(false)
   let sel = $state(0)
@@ -215,6 +217,9 @@
     {#each h.tags as t}<span class="chip tag">{t}</span>{/each}
     <span class="spacer"></span>
     <span class="actions">
+      <button class="iconbtn" title="SFTP" aria-label="SFTP" onclick={(e) => { e.stopPropagation(); sftpHost = h }}>
+        <FolderOpen size={14} />
+      </button>
       <button class="iconbtn" title="Edit" aria-label="Edit" onclick={(e) => { e.stopPropagation(); editing = { ...h } }}>
         <Pencil size={14} />
       </button>
@@ -228,6 +233,9 @@
 
 {#if editing}
   <HostModal host={editing} onclose={() => (editing = null)} />
+{/if}
+{#if sftpHost}
+  <Sftp host={sftpHost} onclose={() => (sftpHost = null)} />
 {/if}
 {#if portio}
   <ImportExport mode={portio} onclose={() => (portio = null)} />

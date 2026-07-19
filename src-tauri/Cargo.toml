@@ -21,6 +21,8 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 russh = "0.62.2"
+# SFTP protocol client over a russh channel stream (decoupled from russh version).
+russh-sftp = "2.3.0"
 # Same ssh-key already pulled in transitively by russh; this edge only turns on
 # the `getrandom` feature so we can seed in-app key generation (SysRng). Pinned
 # to russh's exact version to avoid a duplicate copy in the tree.
