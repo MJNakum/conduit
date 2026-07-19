@@ -48,6 +48,7 @@ export function blankHost(): Host {
 // ---- ssh_config import / export (no lock-in) ------------------------------
 export const importSshConfig = (path?: string) =>
   invoke<Host[]>('ssh_config_import', { path: path ?? null })
+export const importPutty = (path: string) => invoke<Host[]>('putty_import', { path })
 export const exportSshConfig = () => invoke<string>('ssh_config_export')
 export const writeSshConfig = (path: string, text: string) =>
   invoke('ssh_config_export_write', { path, text })
