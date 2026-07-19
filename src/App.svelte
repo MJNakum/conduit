@@ -20,10 +20,14 @@
   import PortForwards from './lib/PortForwards.svelte'
   import Snippets from './lib/Snippets.svelte'
   import Appearance from './lib/Appearance.svelte'
+  import BroadcastBar from './lib/BroadcastBar.svelte'
+  import { Radio } from '@lucide/svelte'
   import { settings, applyAppTheme } from './lib/theme.svelte'
   import { loadForwards, applyForwardState } from './lib/state.svelte'
   import {
     ui,
+    broadcast,
+    connectedSessions,
     loadHosts,
     loadKeys,
     loadSnippets,
@@ -66,6 +70,8 @@
       if (e.metaKey && e.key === 'k') {
         e.preventDefault()
         paletteOpen = !paletteOpen
+      } else if (e.key === 'Escape' && broadcast.on) {
+        broadcast.on = false
       }
     }
     window.addEventListener('keydown', onKey)
@@ -208,10 +214,18 @@
     </div>
   </div>
 
+  {#if broadcast.on}
+    <BroadcastBar />
+  {/if}
+
   <!-- FOOTER — slim global status only (per-session liveness lives on tab dots) -->
   <footer>
     <span>{activeCount()} session{activeCount() === 1 ? '' : 's'} active</span>
     <span class="spacer"></span>
+    <button class="themebtn" class:bcast={broadcast.on} onclick={() => (broadcast.on = !broadcast.on)} disabled={connectedSessions().length === 0}>
+      <Radio size={12} /> Broadcast
+    </button>
+    <span>·</span>
     <button class="themebtn" onclick={() => (appearanceOpen = true)}>Theme: {settings.appTheme}</button>
     <span>·</span>
     <span class="mono">⌘K</span>
@@ -425,6 +439,9 @@
     flex: 1;
   }
   .themebtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     background: none;
     border: none;
     color: hsl(var(--muted-foreground));
@@ -438,5 +455,13 @@
   .themebtn:hover {
     background: hsl(var(--muted));
     color: hsl(var(--foreground));
+  }
+  .themebtn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .themebtn.bcast {
+    color: hsl(var(--amber));
+    background: hsl(var(--amber) / 0.15);
   }
 </style>
