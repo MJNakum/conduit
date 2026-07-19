@@ -3,7 +3,7 @@
   import { ShieldAlert } from '@lucide/svelte'
   import Terminal from './Terminal.svelte'
   import Stepper from './Stepper.svelte'
-  import { store, hostIcon, type Pane } from './state.svelte'
+  import { store, hostIcon, resolveJumps, type Pane } from './state.svelte'
 
   let {
     pane,
@@ -51,6 +51,7 @@
         identityFile: pane.host.identityFile,
         secret: hasSaved ? null : secretVal,
         save: !hasSaved && saveSecret,
+        jumps: resolveJumps(pane.host),
       })
       secretVal = ''
     } catch (e) {
@@ -148,7 +149,7 @@
           {#if pane.phase === 'hostkey'}
             <div class="hostkey" class:changed={pane.keyChanged}>
               {#if pane.keyChanged}
-                <h3 class="danger"><ShieldAlert size={18} /> Host key changed for {pane.host.name}</h3>
+                <h3 class="danger"><ShieldAlert size={18} /> Host key changed for {pane.keyHost || pane.host.name}</h3>
                 <p class="warn">This could indicate a man-in-the-middle attack, or the server was legitimately rebuilt. Only accept if you expected this.</p>
                 <div class="fp"><span class="muted small">Previous</span><code class="mono old">{pane.oldFingerprint}</code></div>
                 <div class="fp"><span class="muted small">New ({pane.keyType})</span><code class="mono">{pane.fingerprint}</code></div>
@@ -157,8 +158,8 @@
                   <button class="btn danger-btn" onclick={() => hostKeyDecision(true)}>Accept new key</button>
                 </div>
               {:else}
-                <h3>{#if Icon}<Icon size={18} />{/if} Verify host key — {pane.host.name}</h3>
-                <p class="muted small">First connection. Confirm this fingerprint matches the server.</p>
+                <h3>{#if Icon}<Icon size={18} />{/if} Verify host key — {pane.keyHost || pane.host.name}</h3>
+                <p class="muted small">First connection{pane.keyHost && pane.keyHost !== pane.host.hostname ? ' (jump host)' : ''}. Confirm this fingerprint matches the server.</p>
                 <div class="fp"><span class="muted small">{pane.keyType}</span><code class="mono">{pane.fingerprint}</code></div>
                 <div class="row">
                   <button class="btn" onclick={() => hostKeyDecision(false)}>Reject</button>

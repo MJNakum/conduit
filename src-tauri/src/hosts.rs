@@ -31,6 +31,9 @@ pub struct Host {
     // ssh_config-native IdentityFile path; used when auth == "key".
     #[serde(default, rename = "identityFile")]
     pub identity_file: Option<String>,
+    // Ordered saved-host ids to ProxyJump through (bastion-1 … target).
+    #[serde(default)]
+    pub jumps: Vec<String>,
 }
 
 fn default_auth() -> String {

@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use russh::client;
 use russh::keys::{decode_secret_key, load_secret_key, Algorithm, HashAlg, PrivateKeyWithHashAlg};
 use russh::ChannelMsg;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::{mpsc, oneshot};
 
@@ -20,25 +20,40 @@ enum SessionInput {
     Resize { cols: u32, rows: u32 },
 }
 
-/// Connection credentials, kept in RAM for the session's lifetime so reconnect
-/// can reuse them. The secret (password or key passphrase) lives in RAM only
-/// for the active process; its durable home is the OS keychain (`secrets.rs`).
+/// One node in a connection path. For a direct connection there's a single hop
+/// (the target); with ProxyJump the chain is [bastion-1, …, target]. Secrets
+/// live in RAM only for the active process; their durable home is the keychain.
 #[derive(Clone)]
-struct Creds {
+struct Hop {
     host: String,
     port: u16,
     user: String,
-    auth: String,                 // "password" | "key"
-    key_id: Option<String>,       // managed key (keychain) when auth == "key"
+    auth: String,                  // "password" | "key"
+    key_id: Option<String>,        // managed key (keychain) when auth == "key"
     identity_file: Option<String>, // else a private-key path
-    secret: String,               // password, or key passphrase ("" if none)
+    secret: String,                // password, or key passphrase ("" if none)
 }
 
 /// A tracked session. `tx` is `None` while disconnected — the entry lingers so
 /// `ssh_reconnect` can restart it; `ssh_disconnect` drops the entry entirely.
+/// `chain` is the full path; its last element is the target.
 struct Session {
     tx: Option<mpsc::UnboundedSender<SessionInput>>,
-    creds: Creds,
+    chain: Vec<Hop>,
+}
+
+/// A jump hop supplied by the webview (references a saved host). Its secret is
+/// resolved from the keychain by `host_id` at connect time.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JumpInput {
+    host_id: Option<String>,
+    host: String,
+    port: u16,
+    user: String,
+    auth: String,
+    key_id: Option<String>,
+    identity_file: Option<String>,
 }
 
 type Sessions = Arc<Mutex<HashMap<String, Session>>>;
@@ -64,7 +79,9 @@ enum ConnState {
     Connecting,
     // Host-key verification pause: the webview shows the fingerprint and answers
     // via `ssh_host_key_decision`. `changed`/`old` drive the §12 red warning.
+    // `host` names the machine being verified (a bastion, mid-chain, isn't the tab's host).
     HostKey {
+        host: String,
         fingerprint: String,
         key_type: String,
         changed: bool,
@@ -143,6 +160,7 @@ impl client::Handler for Handler {
             &self.app,
             &self.id,
             ConnState::HostKey {
+                host: self.host.clone(),
                 fingerprint: fingerprint.clone(),
                 key_type: key_type.clone(),
                 changed: existing.is_some(),
@@ -184,6 +202,7 @@ pub async fn ssh_connect(
     identity_file: Option<String>,
     secret: Option<String>,
     save: bool,
+    jumps: Vec<JumpInput>,
 ) -> Result<String, String> {
     let secret = match secret {
         Some(s) => {
@@ -200,21 +219,38 @@ pub async fn ssh_connect(
             .unwrap_or_default(),
     };
 
+    // Chain = [bastion-1, …, target]. Each jump's secret comes from the keychain
+    // (jumps reference saved hosts); connect the bastion once directly to save it.
+    let mut chain: Vec<Hop> = jumps
+        .into_iter()
+        .map(|j| Hop {
+            secret: j
+                .host_id
+                .as_ref()
+                .and_then(|h| crate::secrets::get(h))
+                .unwrap_or_default(),
+            host: j.host,
+            port: j.port,
+            user: j.user,
+            auth: j.auth,
+            key_id: j.key_id,
+            identity_file: j.identity_file,
+        })
+        .collect();
+    chain.push(Hop {
+        host,
+        port,
+        user,
+        auth,
+        key_id,
+        identity_file,
+        secret,
+    });
+
     let id = format!("s{}", NEXT_ID.fetch_add(1, Ordering::Relaxed));
     state.sessions.lock().unwrap().insert(
         id.clone(),
-        Session {
-            tx: None,
-            creds: Creds {
-                host,
-                port,
-                user,
-                auth,
-                key_id,
-                identity_file,
-                secret,
-            },
-        },
+        Session { tx: None, chain },
     );
     start_session(app, id.clone(), state.sessions.clone(), state.pending.clone());
     Ok(id)
@@ -245,8 +281,8 @@ pub fn ssh_host_key_decision(state: State<'_, SshState>, id: String, accept: boo
 /// Spawn the async task that owns the russh session for `id`, wiring a fresh
 /// input channel. Reads the retained creds from the map.
 fn start_session(app: AppHandle, id: String, sessions: Sessions, pending: Pending) {
-    let creds = match sessions.lock().unwrap().get(&id) {
-        Some(s) => s.creds.clone(),
+    let chain = match sessions.lock().unwrap().get(&id) {
+        Some(s) => s.chain.clone(),
         None => return,
     };
     let (tx, rx) = mpsc::unbounded_channel::<SessionInput>();
@@ -256,7 +292,7 @@ fn start_session(app: AppHandle, id: String, sessions: Sessions, pending: Pendin
     }
 
     tauri::async_runtime::spawn(async move {
-        let result = run_session(&app, &id, creds, rx, pending.clone()).await;
+        let result = run_session(&app, &id, chain, rx, pending.clone()).await;
         pending.lock().unwrap().remove(&id); // clear any un-answered prompt
         // Never leak credentials into the error surfaced to the UI.
         let final_state = match result {
@@ -274,70 +310,78 @@ fn start_session(app: AppHandle, id: String, sessions: Sessions, pending: Pendin
 
 /// Owns the russh session for its whole lifetime. Returns an optional
 /// disconnect reason on clean exit, or an error string on failure.
-async fn run_session(
-    app: &AppHandle,
-    id: &str,
-    creds: Creds,
-    mut rx: mpsc::UnboundedReceiver<SessionInput>,
-    pending: Pending,
-) -> Result<Option<String>, String> {
-    let Creds {
-        host,
-        port,
-        user,
-        auth,
-        key_id,
-        identity_file,
-        secret,
-    } = creds;
-
-    emit_state(app, id, ConnState::Connecting);
-
-    let config = Arc::new(client::Config::default());
-    let handler = Handler {
-        app: app.clone(),
-        id: id.to_string(),
-        host: host.clone(),
-        port,
-        pending,
-    };
-    let mut handle = client::connect(config, (host.as_str(), port), handler)
-        .await
-        .map_err(|e| format!("connect failed: {e}"))?;
-
-    let method = if auth == "key" { "publickey" } else { "password" };
-    emit_state(
-        app,
-        id,
-        ConnState::Authenticating {
-            method: method.into(),
-        },
-    );
-
-    let result = if auth == "key" {
+/// Authenticate an open handle as `hop` dictates (password or key).
+async fn authenticate(handle: &mut client::Handle<Handler>, hop: &Hop) -> Result<(), String> {
+    let result = if hop.auth == "key" {
         // Managed key (private material in the keychain) takes precedence; a raw
         // identity-file path is the fallback for keys the manager doesn't own.
-        let key = if let Some(kid) = key_id {
-            let pem = crate::keys::private_pem(&kid)
-                .ok_or("managed key not found in keychain")?;
+        let key = if let Some(kid) = &hop.key_id {
+            let pem =
+                crate::keys::private_pem(kid).ok_or("managed key not found in keychain")?;
             decode_secret_key(&pem, None).map_err(|e| format!("decode key: {e}"))?
         } else {
-            let path = identity_file.ok_or("no key selected for key auth")?;
-            let path = expand_tilde(&path);
-            let passphrase = (!secret.is_empty()).then_some(secret.as_str());
-            load_secret_key(&path, passphrase).map_err(|e| format!("load key: {e}"))?
+            let path = hop.identity_file.as_deref().ok_or("no key selected for key auth")?;
+            let passphrase = (!hop.secret.is_empty()).then_some(hop.secret.as_str());
+            load_secret_key(expand_tilde(path), passphrase).map_err(|e| format!("load key: {e}"))?
         };
         // RSA keys need an explicit SHA-2 hash alg (rsa-sha2-256); others ignore it.
         let hash = matches!(key.algorithm(), Algorithm::Rsa { .. }).then_some(HashAlg::Sha256);
         handle
-            .authenticate_publickey(&user, PrivateKeyWithHashAlg::new(Arc::new(key), hash))
+            .authenticate_publickey(&hop.user, PrivateKeyWithHashAlg::new(Arc::new(key), hash))
             .await
     } else {
-        handle.authenticate_password(&user, &secret).await
+        handle.authenticate_password(&hop.user, &hop.secret).await
     };
-    let auth_result = result.map_err(|e| format!("auth error: {e}"))?;
-    if !matches!(auth_result, client::AuthResult::Success) {
-        return Err("authentication failed".into());
+    match result.map_err(|e| format!("auth error: {e}"))? {
+        client::AuthResult::Success => Ok(()),
+        _ => Err("authentication failed".into()),
+    }
+}
+
+async fn run_session(
+    app: &AppHandle,
+    id: &str,
+    chain: Vec<Hop>,
+    mut rx: mpsc::UnboundedReceiver<SessionInput>,
+    pending: Pending,
+) -> Result<Option<String>, String> {
+    let config = Arc::new(client::Config::default());
+    let mk_handler = |hop: &Hop| Handler {
+        app: app.clone(),
+        id: id.to_string(),
+        host: hop.host.clone(),
+        port: hop.port,
+        pending: pending.clone(),
+    };
+    let emit_auth = |hop: &Hop| {
+        let method = if hop.auth == "key" { "publickey" } else { "password" };
+        emit_state(app, id, ConnState::Authenticating { method: method.into() });
+    };
+
+    emit_state(app, id, ConnState::Connecting);
+
+    // First hop over TCP; each subsequent hop is tunnelled through the previous
+    // via a direct-tcpip channel. Intermediate handles are kept alive in `bastions`
+    // so their transports (which back the tunnels) don't drop.
+    let first = &chain[0];
+    let mut handle = client::connect(config.clone(), (first.host.as_str(), first.port), mk_handler(first))
+        .await
+        .map_err(|e| format!("connect failed: {e}"))?;
+    emit_auth(first);
+    authenticate(&mut handle, first).await?;
+
+    let mut bastions: Vec<client::Handle<Handler>> = Vec::new();
+    for hop in &chain[1..] {
+        let channel = handle
+            .channel_open_direct_tcpip(hop.host.clone(), hop.port as u32, "127.0.0.1", 0)
+            .await
+            .map_err(|e| format!("jump to {}: {e}", hop.host))?;
+        bastions.push(handle); // keep the previous hop's transport alive
+        handle = client::connect_stream(config.clone(), channel.into_stream(), mk_handler(hop))
+            .await
+            .map_err(|e| format!("connect via jump to {}: {e}", hop.host))?;
+        emit_auth(hop);
+        authenticate(&mut handle, hop).await?;
     }
 
     let mut channel = handle

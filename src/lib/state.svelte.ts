@@ -15,6 +15,7 @@ export type Host = {
   auth: 'password' | 'key'
   keyId: string | null // managed key from the Key Manager
   identityFile: string | null // or a raw private-key path
+  jumps: string[] // ordered saved-host ids to ProxyJump through (bastion-1 … target)
 }
 
 export function blankHost(): Host {
@@ -32,7 +33,25 @@ export function blankHost(): Host {
     auth: 'password',
     keyId: null,
     identityFile: null,
+    jumps: [],
   }
+}
+
+// Resolve a host's jump chain (saved-host ids) into hop descriptors the backend
+// can connect through; each jump's secret is pulled from the keychain by hostId.
+export function resolveJumps(h: Host): unknown[] {
+  return (h.jumps ?? [])
+    .map((id) => store.hosts.find((x) => x.id === id))
+    .filter((j): j is Host => !!j)
+    .map((j) => ({
+      hostId: j.id,
+      host: j.hostname,
+      port: j.port,
+      user: j.user,
+      auth: j.auth,
+      keyId: j.keyId,
+      identityFile: j.identityFile,
+    }))
 }
 
 // ---- Managed SSH keys (Key Manager) ---------------------------------------
@@ -136,6 +155,7 @@ export type Pane = {
   error: string
   method: string // auth method for the current 'authenticating' phase
   // Host-key prompt payload (phase === 'hostkey'):
+  keyHost: string // the machine being verified (a bastion mid-chain isn't the tab host)
   fingerprint: string
   keyType: string
   keyChanged: boolean
@@ -160,6 +180,7 @@ function newPane(host: Host | null): Pane {
     phase: '',
     error: '',
     method: '',
+    keyHost: '',
     fingerprint: '',
     keyType: '',
     keyChanged: false,
@@ -205,6 +226,7 @@ export type StatePayload = {
   state: string
   message?: string
   method?: string
+  host?: string
   fingerprint?: string
   key_type?: string
   changed?: boolean
@@ -220,6 +242,7 @@ export function applyState(p: StatePayload) {
     pane.error = p.state === 'error' ? (p.message ?? 'error') : ''
     if (p.state === 'authenticating') pane.method = p.method ?? ''
     if (p.state === 'hostkey') {
+      pane.keyHost = p.host ?? ''
       pane.fingerprint = p.fingerprint ?? ''
       pane.keyType = p.key_type ?? ''
       pane.keyChanged = !!p.changed
