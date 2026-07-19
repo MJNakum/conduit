@@ -1,8 +1,11 @@
 <script lang="ts">
   import { Pencil } from '@lucide/svelte'
-  import { saveHost, type Host } from './state.svelte'
+  import { saveHost, keysStore, type Host } from './state.svelte'
 
   let { host, onclose }: { host: Host; onclose: () => void } = $props()
+
+  // "" = use a raw identity-file path; otherwise a managed key id.
+  let keyChoice = $state(host.keyId ?? '')
 
   // Edit a copy; commit only on save. tags edited as a comma string.
   let draft = $state({ ...host })
@@ -17,6 +20,9 @@
       .map((t) => t.trim())
       .filter(Boolean)
     draft.color = useColor ? color : null
+    // Managed key vs raw path are mutually exclusive.
+    draft.keyId = draft.auth === 'key' && keyChoice ? keyChoice : null
+    if (draft.keyId) draft.identityFile = null
     await saveHost({ ...draft })
     onclose()
   }
@@ -58,13 +64,23 @@
           </select>
         </div>
         {#if draft.auth === 'key'}
-          <!-- ponytail: path text input now; native file picker + Key-Manager reference in 2b. -->
           <div class="field">
-            <label for="f-key">Identity file</label>
-            <input id="f-key" class="mono" value={draft.identityFile ?? ''} oninput={(e) => (draft.identityFile = (e.currentTarget as HTMLInputElement).value || null)} placeholder="~/.ssh/id_ed25519" />
+            <label for="f-keysel">Key</label>
+            <select id="f-keysel" bind:value={keyChoice}>
+              {#each keysStore.keys as k (k.id)}
+                <option value={k.id}>{k.name} ({k.key_type})</option>
+              {/each}
+              <option value="">Use file path…</option>
+            </select>
           </div>
         {/if}
       </div>
+      {#if draft.auth === 'key' && !keyChoice}
+        <div class="field">
+          <label for="f-key">Identity file</label>
+          <input id="f-key" class="mono" value={draft.identityFile ?? ''} oninput={(e) => (draft.identityFile = (e.currentTarget as HTMLInputElement).value || null)} placeholder="~/.ssh/id_ed25519" />
+        </div>
+      {/if}
     </div>
     <div class="mfoot">
       <button class="btn ghost" onclick={onclose}>Cancel</button>

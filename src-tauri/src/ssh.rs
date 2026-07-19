@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use russh::client;
-use russh::keys::{load_secret_key, Algorithm, HashAlg, PrivateKeyWithHashAlg};
+use russh::keys::{decode_secret_key, load_secret_key, Algorithm, HashAlg, PrivateKeyWithHashAlg};
 use russh::ChannelMsg;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
@@ -29,7 +29,8 @@ struct Creds {
     port: u16,
     user: String,
     auth: String,                 // "password" | "key"
-    identity_file: Option<String>, // private-key path when auth == "key"
+    key_id: Option<String>,       // managed key (keychain) when auth == "key"
+    identity_file: Option<String>, // else a private-key path
     secret: String,               // password, or key passphrase ("" if none)
 }
 
@@ -179,6 +180,7 @@ pub async fn ssh_connect(
     port: u16,
     user: String,
     auth: String,
+    key_id: Option<String>,
     identity_file: Option<String>,
     secret: Option<String>,
     save: bool,
@@ -208,6 +210,7 @@ pub async fn ssh_connect(
                 port,
                 user,
                 auth,
+                key_id,
                 identity_file,
                 secret,
             },
@@ -283,6 +286,7 @@ async fn run_session(
         port,
         user,
         auth,
+        key_id,
         identity_file,
         secret,
     } = creds;
@@ -311,10 +315,18 @@ async fn run_session(
     );
 
     let result = if auth == "key" {
-        let path = identity_file.ok_or("no identity file set for key auth")?;
-        let path = expand_tilde(&path);
-        let passphrase = (!secret.is_empty()).then_some(secret.as_str());
-        let key = load_secret_key(&path, passphrase).map_err(|e| format!("load key: {e}"))?;
+        // Managed key (private material in the keychain) takes precedence; a raw
+        // identity-file path is the fallback for keys the manager doesn't own.
+        let key = if let Some(kid) = key_id {
+            let pem = crate::keys::private_pem(&kid)
+                .ok_or("managed key not found in keychain")?;
+            decode_secret_key(&pem, None).map_err(|e| format!("decode key: {e}"))?
+        } else {
+            let path = identity_file.ok_or("no key selected for key auth")?;
+            let path = expand_tilde(&path);
+            let passphrase = (!secret.is_empty()).then_some(secret.as_str());
+            load_secret_key(&path, passphrase).map_err(|e| format!("load key: {e}"))?
+        };
         // RSA keys need an explicit SHA-2 hash alg (rsa-sha2-256); others ignore it.
         let hash = matches!(key.algorithm(), Algorithm::Rsa { .. }).then_some(HashAlg::Sha256);
         handle

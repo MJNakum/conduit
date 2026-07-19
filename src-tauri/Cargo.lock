@@ -3927,6 +3927,7 @@ dependencies = [
  "russh",
  "serde",
  "serde_json",
+ "ssh-key",
  "tauri",
  "tauri-build",
  "tokio",

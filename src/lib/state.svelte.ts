@@ -13,7 +13,8 @@ export type Host = {
   group: string | null
   autoReconnect: boolean
   auth: 'password' | 'key'
-  identityFile: string | null
+  keyId: string | null // managed key from the Key Manager
+  identityFile: string | null // or a raw private-key path
 }
 
 export function blankHost(): Host {
@@ -29,8 +30,47 @@ export function blankHost(): Host {
     group: null,
     autoReconnect: false,
     auth: 'password',
+    keyId: null,
     identityFile: null,
   }
+}
+
+// ---- Managed SSH keys (Key Manager) ---------------------------------------
+export type Key = {
+  id: string
+  name: string
+  key_type: string // Algorithm name, e.g. "ssh-ed25519"
+  fingerprint: string // "SHA256:…"
+  public_key: string // authorized_keys line
+  created: string // unix seconds
+}
+
+export const keysStore = $state({ keys: [] as Key[] })
+
+export async function loadKeys() {
+  keysStore.keys = await invoke<Key[]>('keys_list')
+}
+
+export async function generateKey(name: string, keyType: 'ed25519' | 'rsa' | 'ecdsa'): Promise<Key> {
+  const k = await invoke<Key>('key_generate', { id: crypto.randomUUID(), name, keyType })
+  keysStore.keys.push(k)
+  return k
+}
+
+export async function importKey(name: string, pem: string, passphrase: string): Promise<Key> {
+  const k = await invoke<Key>('key_import', {
+    id: crypto.randomUUID(),
+    name,
+    pem,
+    passphrase: passphrase || null,
+  })
+  keysStore.keys.push(k)
+  return k
+}
+
+export async function deleteKey(id: string) {
+  await invoke('key_delete', { id })
+  keysStore.keys = keysStore.keys.filter((k) => k.id !== id)
 }
 
 // Auto-icon when the user hasn't picked one: a cheap keyword map, else a default.

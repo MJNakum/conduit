@@ -1,4 +1,5 @@
 mod hosts;
+mod keys;
 mod knownhosts;
 mod secrets;
 mod ssh;
@@ -18,6 +19,10 @@ pub fn run() {
             hosts::host_save,
             hosts::host_delete,
             knownhosts::known_hosts_list,
+            keys::keys_list,
+            keys::key_generate,
+            keys::key_import,
+            keys::key_delete,
             secrets::secret_set,
             secrets::secret_has,
             secrets::secret_delete

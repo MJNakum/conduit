@@ -15,6 +15,10 @@
   let saveSecret = $state(true)
   let hasSaved = $state(false)
   const Icon = $derived(pane.host ? hostIcon(pane.host) : null)
+  // Managed keys carry no secret (private material is unencrypted in the keychain),
+  // so key-auth-with-a-managed-key needs no prompt.
+  const managedKey = $derived(pane.host?.auth === 'key' && !!pane.host?.keyId)
+  const promptSecret = $derived(!hasSaved && !managedKey)
 
   // Does the keychain already hold a secret for this host? If so, skip the prompt.
   $effect(() => {
@@ -43,6 +47,7 @@
         port: pane.host.port,
         user: pane.host.user,
         auth: pane.host.auth,
+        keyId: pane.host.keyId,
         identityFile: pane.host.identityFile,
         secret: hasSaved ? null : secretVal,
         save: !hasSaved && saveSecret,
@@ -113,8 +118,8 @@
       <h2>{#if Icon}<Icon size={18} />{/if} {pane.host.name}</h2>
       <p class="muted mono">{pane.host.user}@{pane.host.hostname}:{pane.host.port}</p>
       <form onsubmit={(e) => { e.preventDefault(); connect() }}>
-        {#if hasSaved}
-          <p class="muted small">Using saved secret from Keychain.</p>
+        {#if !promptSecret}
+          <p class="muted small">{managedKey ? 'Authenticating with a managed key.' : 'Using saved secret from Keychain.'}</p>
         {:else}
           <!-- svelte-ignore a11y_autofocus -->
           <input
