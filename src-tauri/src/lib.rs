@@ -3,6 +3,7 @@ mod keys;
 mod knownhosts;
 mod secrets;
 mod ssh;
+mod sshconfig;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,7 +26,10 @@ pub fn run() {
             keys::key_delete,
             secrets::secret_set,
             secrets::secret_has,
-            secrets::secret_delete
+            secrets::secret_delete,
+            sshconfig::ssh_config_import,
+            sshconfig::ssh_config_export,
+            sshconfig::ssh_config_export_write
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

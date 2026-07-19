@@ -457,7 +457,7 @@ pub fn ssh_resize(
 
 /// Expand a leading `~/` to $HOME. ssh_config IdentityFile paths use it; russh
 /// does not. ponytail: only the leading `~`, which is the case that occurs.
-fn expand_tilde(path: &str) -> String {
+pub(crate) fn expand_tilde(path: &str) -> String {
     if let Some(rest) = path.strip_prefix("~/") {
         if let Ok(home) = std::env::var("HOME") {
             return format!("{home}/{rest}");

@@ -1,13 +1,15 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { Search, Plus, Star, Pencil, Trash2, Rows3, Rows4 } from '@lucide/svelte'
+  import { Search, Plus, Star, Pencil, Trash2, Rows3, Rows4, Upload, Download } from '@lucide/svelte'
   import HostModal from './HostModal.svelte'
+  import ImportExport from './ImportExport.svelte'
   import { store, ui, deleteHost, hostIcon, blankHost, tabHost, type Host } from './state.svelte'
 
   let { onopen }: { onopen: (h: Host) => void } = $props()
 
   let filter = $state('')
   let editing = $state<Host | null>(null)
+  let portio = $state<'import' | 'export' | null>(null)
   let dense = $state(false)
   let sel = $state(0)
   let searchEl = $state<HTMLInputElement>()
@@ -100,6 +102,12 @@
       <Rows4 size={14} />
     </button>
   </div>
+  <button class="btn" title="Import from ssh_config" onclick={() => (portio = 'import')}>
+    <Upload size={14} /> Import
+  </button>
+  <button class="btn" title="Export to ssh_config" onclick={() => (portio = 'export')}>
+    <Download size={14} /> Export
+  </button>
   <button class="btn primary" onclick={() => (editing = blankHost())}>
     <Plus size={14} /> New Host
   </button>
@@ -170,6 +178,9 @@
 
 {#if editing}
   <HostModal host={editing} onclose={() => (editing = null)} />
+{/if}
+{#if portio}
+  <ImportExport mode={portio} onclose={() => (portio = null)} />
 {/if}
 
 <style>
