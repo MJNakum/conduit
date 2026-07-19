@@ -25,6 +25,19 @@ pub struct Host {
     pub group: Option<String>,
     #[serde(default, rename = "autoReconnect")]
     pub auto_reconnect: bool,
+    // Auth: "password" | "key". Secrets never live here — only in the keychain.
+    #[serde(default = "default_auth")]
+    pub auth: String,
+    // ssh_config-native IdentityFile path; used when auth == "key".
+    #[serde(default, rename = "identityFile")]
+    pub identity_file: Option<String>,
+    // Ordered saved-host ids to ProxyJump through (bastion-1 … target).
+    #[serde(default)]
+    pub jumps: Vec<String>,
+}
+
+fn default_auth() -> String {
+    "password".into()
 }
 
 fn store_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -71,5 +84,6 @@ pub fn host_save(app: AppHandle, host: Host) -> Result<Host, String> {
 pub fn host_delete(app: AppHandle, id: String) -> Result<(), String> {
     let mut hosts = read_all(&app)?;
     hosts.retain(|h| h.id != id);
+    crate::secrets::delete(&id); // drop any keychain secret for this host
     write_all(&app, &hosts)
 }

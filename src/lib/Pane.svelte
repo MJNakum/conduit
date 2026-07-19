@@ -1,8 +1,9 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
+  import { ShieldAlert } from '@lucide/svelte'
   import Terminal from './Terminal.svelte'
   import Stepper from './Stepper.svelte'
-  import { store, hostIcon, type Pane } from './state.svelte'
+  import { store, hostIcon, resolveJumps, type Pane } from './state.svelte'
 
   let {
     pane,
@@ -10,11 +11,26 @@
     onfocus,
   }: { pane: Pane; active: boolean; onfocus: () => void } = $props()
 
-  let password = $state('')
+  let secretVal = $state('')
+  let saveSecret = $state(true)
+  let hasSaved = $state(false)
   const Icon = $derived(pane.host ? hostIcon(pane.host) : null)
+  // Managed keys carry no secret (private material is unencrypted in the keychain),
+  // so key-auth-with-a-managed-key needs no prompt.
+  const managedKey = $derived(pane.host?.auth === 'key' && !!pane.host?.keyId)
+  const promptSecret = $derived(!hasSaved && !managedKey)
+
+  // Does the keychain already hold a secret for this host? If so, skip the prompt.
+  $effect(() => {
+    const h = pane.host
+    if (h && !pane.sessionId) {
+      invoke<boolean>('secret_has', { hostId: h.id }).then((v) => (hasSaved = v))
+    }
+  })
 
   function dotColor(phase: string): string {
-    if (phase === 'connecting' || phase === 'authenticating') return 'hsl(var(--connecting))'
+    if (phase === 'connecting' || phase === 'authenticating' || phase === 'hostkey')
+      return 'hsl(var(--connecting))'
     if (phase === 'connected') return 'hsl(var(--primary))'
     if (phase === 'error' || phase === 'disconnected') return 'hsl(var(--destructive))'
     return 'hsl(var(--muted-foreground))'
@@ -26,16 +42,29 @@
     pane.phase = 'connecting'
     try {
       pane.sessionId = await invoke<string>('ssh_connect', {
+        hostId: pane.host.id,
         host: pane.host.hostname,
         port: pane.host.port,
         user: pane.host.user,
-        password,
+        auth: pane.host.auth,
+        keyId: pane.host.keyId,
+        identityFile: pane.host.identityFile,
+        secret: hasSaved ? null : secretVal,
+        save: !hasSaved && saveSecret,
+        jumps: resolveJumps(pane.host),
       })
-      password = ''
+      secretVal = ''
     } catch (e) {
       pane.phase = 'error'
       pane.error = String(e)
     }
+  }
+
+  // Answer the backend's host-key prompt. Reject makes auth fail -> Error state.
+  function hostKeyDecision(accept: boolean) {
+    if (!pane.sessionId) return
+    invoke('ssh_host_key_decision', { id: pane.sessionId, accept })
+    if (accept) pane.phase = 'connecting'
   }
 
   function reset() {
@@ -90,8 +119,18 @@
       <h2>{#if Icon}<Icon size={18} />{/if} {pane.host.name}</h2>
       <p class="muted mono">{pane.host.user}@{pane.host.hostname}:{pane.host.port}</p>
       <form onsubmit={(e) => { e.preventDefault(); connect() }}>
-        <!-- svelte-ignore a11y_autofocus -->
-        <input type="password" placeholder="password" bind:value={password} autofocus />
+        {#if !promptSecret}
+          <p class="muted small">{managedKey ? 'Authenticating with a managed key.' : 'Using saved secret from Keychain.'}</p>
+        {:else}
+          <!-- svelte-ignore a11y_autofocus -->
+          <input
+            type="password"
+            placeholder={pane.host.auth === 'key' ? 'passphrase (if key is encrypted)' : 'password'}
+            bind:value={secretVal}
+            autofocus
+          />
+          <label class="save"><input type="checkbox" bind:checked={saveSecret} /> Save to Keychain</label>
+        {/if}
         <button class="btn primary" type="submit">Connect</button>
       </form>
       {#if pane.error}<div class="err">{pane.error}</div>{/if}
@@ -107,12 +146,35 @@
       <div class="term"><Terminal id={pane.sessionId} /></div>
       {#if overlay}
         <div class="cover">
-          <h3>{#if Icon}<Icon size={18} />{/if} {pane.host.name}</h3>
-          <Stepper phase={pane.phase} error={pane.error} />
-          {#if pane.phase === 'disconnected'}
-            <button class="btn primary" onclick={reconnect}>Reconnect</button>
-          {:else if pane.phase === 'error'}
-            <button class="btn primary" onclick={reset}>Try again</button>
+          {#if pane.phase === 'hostkey'}
+            <div class="hostkey" class:changed={pane.keyChanged}>
+              {#if pane.keyChanged}
+                <h3 class="danger"><ShieldAlert size={18} /> Host key changed for {pane.keyHost || pane.host.name}</h3>
+                <p class="warn">This could indicate a man-in-the-middle attack, or the server was legitimately rebuilt. Only accept if you expected this.</p>
+                <div class="fp"><span class="muted small">Previous</span><code class="mono old">{pane.oldFingerprint}</code></div>
+                <div class="fp"><span class="muted small">New ({pane.keyType})</span><code class="mono">{pane.fingerprint}</code></div>
+                <div class="row">
+                  <button class="btn primary" onclick={() => hostKeyDecision(false)}>Reject</button>
+                  <button class="btn danger-btn" onclick={() => hostKeyDecision(true)}>Accept new key</button>
+                </div>
+              {:else}
+                <h3>{#if Icon}<Icon size={18} />{/if} Verify host key — {pane.keyHost || pane.host.name}</h3>
+                <p class="muted small">First connection{pane.keyHost && pane.keyHost !== pane.host.hostname ? ' (jump host)' : ''}. Confirm this fingerprint matches the server.</p>
+                <div class="fp"><span class="muted small">{pane.keyType}</span><code class="mono">{pane.fingerprint}</code></div>
+                <div class="row">
+                  <button class="btn" onclick={() => hostKeyDecision(false)}>Reject</button>
+                  <button class="btn primary" onclick={() => hostKeyDecision(true)}>Accept</button>
+                </div>
+              {/if}
+            </div>
+          {:else}
+            <h3>{#if Icon}<Icon size={18} />{/if} {pane.host.name}</h3>
+            <Stepper phase={pane.phase} error={pane.error} method={pane.method} />
+            {#if pane.phase === 'disconnected'}
+              <button class="btn primary" onclick={reconnect}>Reconnect</button>
+            {:else if pane.phase === 'error'}
+              <button class="btn primary" onclick={reset}>Try again</button>
+            {/if}
           {/if}
         </div>
       {/if}
@@ -241,6 +303,75 @@
     color: hsl(var(--destructive));
     margin-top: 0.6rem;
     font-size: 12.5px;
+  }
+  .small {
+    font-size: 12px;
+  }
+  .save {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    color: hsl(var(--muted-foreground));
+  }
+  .save input {
+    width: auto;
+    padding: 0;
+  }
+  .hostkey {
+    width: 420px;
+    max-width: 92%;
+    text-align: center;
+    padding: 1.1rem 1.3rem;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+  }
+  .hostkey.changed {
+    border-color: hsl(var(--destructive));
+    box-shadow: 0 0 0 1px hsl(var(--destructive) / 0.4);
+  }
+  .danger {
+    color: hsl(var(--destructive));
+  }
+  .warn {
+    font-size: 12.5px;
+    color: hsl(var(--muted-foreground));
+    margin: 0.5rem 0 0.9rem;
+    line-height: 1.4;
+  }
+  .fp {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    align-items: flex-start;
+    margin: 0.5rem 0;
+  }
+  .fp code {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 9px;
+    background: hsl(var(--muted));
+    border: 1px solid hsl(var(--border));
+    border-radius: 6px;
+    font-size: 12px;
+    word-break: break-all;
+    user-select: all;
+  }
+  .fp code.old {
+    color: hsl(var(--muted-foreground));
+    text-decoration: line-through;
+  }
+  .row {
+    display: flex;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 1rem;
+  }
+  .btn.danger-btn {
+    background: hsl(var(--destructive));
+    color: #fff;
   }
   .btn {
     padding: 8px 14px;

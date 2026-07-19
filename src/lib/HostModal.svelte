@@ -1,8 +1,18 @@
 <script lang="ts">
-  import { Pencil } from '@lucide/svelte'
-  import { saveHost, type Host } from './state.svelte'
+  import { Pencil, Plus, X } from '@lucide/svelte'
+  import { saveHost, keysStore, store, type Host } from './state.svelte'
 
   let { host, onclose }: { host: Host; onclose: () => void } = $props()
+
+  // "" = use a raw identity-file path; otherwise a managed key id.
+  let keyChoice = $state(host.keyId ?? '')
+
+  // Other saved hosts, offered as ProxyJump hops (a host can't jump through itself).
+  const otherHosts = $derived(store.hosts.filter((h) => h.id !== draft.id))
+  function addJump() {
+    const first = otherHosts.find((h) => !draft.jumps.includes(h.id))
+    if (first) draft.jumps = [...draft.jumps, first.id]
+  }
 
   // Edit a copy; commit only on save. tags edited as a comma string.
   let draft = $state({ ...host })
@@ -17,6 +27,9 @@
       .map((t) => t.trim())
       .filter(Boolean)
     draft.color = useColor ? color : null
+    // Managed key vs raw path are mutually exclusive.
+    draft.keyId = draft.auth === 'key' && keyChoice ? keyChoice : null
+    if (draft.keyId) draft.identityFile = null
     await saveHost({ ...draft })
     onclose()
   }
@@ -48,6 +61,52 @@
           <label for="f-recon">Auto-reconnect</label>
           <label class="check"><input id="f-recon" type="checkbox" bind:checked={draft.autoReconnect} /> Reconnect on drop</label>
         </div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="f-auth">Auth</label>
+          <select id="f-auth" bind:value={draft.auth}>
+            <option value="password">Password</option>
+            <option value="key">Key</option>
+          </select>
+        </div>
+        {#if draft.auth === 'key'}
+          <div class="field">
+            <label for="f-keysel">Key</label>
+            <select id="f-keysel" bind:value={keyChoice}>
+              {#each keysStore.keys as k (k.id)}
+                <option value={k.id}>{k.name} ({k.key_type})</option>
+              {/each}
+              <option value="">Use file path…</option>
+            </select>
+          </div>
+        {/if}
+      </div>
+      {#if draft.auth === 'key' && !keyChoice}
+        <div class="field">
+          <label for="f-key">Identity file</label>
+          <input id="f-key" class="mono" value={draft.identityFile ?? ''} oninput={(e) => (draft.identityFile = (e.currentTarget as HTMLInputElement).value || null)} placeholder="~/.ssh/id_ed25519" />
+        </div>
+      {/if}
+      <div class="field">
+        <label>Jump hosts (ProxyJump)</label>
+        {#if draft.jumps.length === 0}
+          <p class="muted small">Direct connection. Add a bastion to tunnel through it.</p>
+        {/if}
+        {#each draft.jumps as jid, i (i)}
+          <div class="jrow">
+            <span class="muted mono hop">{i + 1}</span>
+            <select value={jid} onchange={(e) => (draft.jumps[i] = (e.currentTarget as HTMLSelectElement).value)}>
+              {#each otherHosts as h (h.id)}
+                <option value={h.id}>{h.name} ({h.user}@{h.hostname})</option>
+              {/each}
+            </select>
+            <button type="button" class="jx" aria-label="Remove jump" onclick={() => (draft.jumps = draft.jumps.filter((_, k) => k !== i))}><X size={14} /></button>
+          </div>
+        {/each}
+        {#if otherHosts.length > draft.jumps.length}
+          <button type="button" class="addjump" onclick={addJump}><Plus size={13} /> Add jump</button>
+        {/if}
       </div>
     </div>
     <div class="mfoot">
@@ -102,7 +161,8 @@
     font-size: 11.5px;
     color: hsl(var(--muted-foreground));
   }
-  .field input {
+  .field input,
+  .field select {
     background: hsl(var(--muted));
     border: 1px solid hsl(var(--border));
     border-radius: 7px;
@@ -112,7 +172,8 @@
     font-size: 13px;
     font-family: inherit;
   }
-  .field input:focus {
+  .field input:focus,
+  .field select:focus {
     border-color: hsl(var(--ring) / 0.6);
   }
   .grid2 {
@@ -137,6 +198,57 @@
     width: auto;
     background: none;
     padding: 0;
+  }
+  .small {
+    font-size: 12px;
+    margin: 2px 0 0;
+  }
+  .jrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .jrow select {
+    flex: 1;
+  }
+  .hop {
+    width: 12px;
+    text-align: right;
+    font-size: 11px;
+  }
+  .jx {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 30px;
+    flex: none;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .jx:hover {
+    color: hsl(var(--destructive));
+  }
+  .addjump {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 6px 10px;
+    border: 1px dashed hsl(var(--border));
+    background: none;
+    color: hsl(var(--muted-foreground));
+    border-radius: 7px;
+    font-size: 12.5px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .addjump:hover {
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
   }
   .swatch {
     padding: 2px;

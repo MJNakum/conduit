@@ -1,16 +1,16 @@
 <script lang="ts">
   import { Check, X } from '@lucide/svelte'
-  // Driven by real ssh://state events — never a faked animation. Only the three
-  // phases the backend actually emits appear; richer steps (jump host, host-key,
-  // MFA) arrive with their Phase 2 events.
-  let { phase, error }: { phase: string; error: string } = $props()
+  // Driven by real ssh://state events — never a faked animation. Host-key
+  // verification is handled as its own prompt in Pane; ProxyJump/MFA steps
+  // arrive with their later-phase events.
+  let { phase, error, method = '' }: { phase: string; error: string; method?: string } = $props()
 
   const steps = ['connecting', 'authenticating', 'connected']
-  const labels: Record<string, string> = {
+  const labels = $derived<Record<string, string>>({
     connecting: 'Connecting',
-    authenticating: 'Authenticating',
+    authenticating: method ? `Authenticating (${method})` : 'Authenticating',
     connected: 'Connected',
-  }
+  })
   const idx = $derived(steps.indexOf(phase))
   const failed = $derived(phase === 'error' || phase === 'disconnected')
 </script>

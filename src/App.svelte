@@ -16,9 +16,11 @@
   import HostList from './lib/HostList.svelte'
   import TabView from './lib/TabView.svelte'
   import Palette from './lib/Palette.svelte'
+  import KeyManager from './lib/KeyManager.svelte'
   import {
     ui,
     loadHosts,
+    loadKeys,
     openTab,
     closeTab,
     applyState,
@@ -27,15 +29,17 @@
     tabHost,
     type Host,
     type Tab,
+    type StatePayload,
   } from './lib/state.svelte'
 
   let paletteOpen = $state(false)
+  // Which home-view section is showing (only when no terminal tab is active).
+  let section = $state<'hosts' | 'keys'>('hosts')
 
-  // Sidebar sections. Only Hosts is wired now — Keys/Snippets/Port Forwards/
-  // History and the Groups tree are inert placeholders for their later phases
+  // Sidebar sections. Hosts + Keys are wired — Snippets/Port Forwards/History
+  // and the Groups tree are inert placeholders for their later phases
   // (see docs/mvp-plan.md), shown so the shell has correct proportions.
   const laterSections = [
-    { label: 'Keys', icon: KeyRound },
     { label: 'Snippets', icon: Zap },
     { label: 'Port Forwards', icon: ArrowRightLeft },
     { label: 'History', icon: History },
@@ -43,9 +47,8 @@
 
   onMount(() => {
     loadHosts()
-    listen<{ id: string; state: string; message?: string }>('ssh://state', (e) =>
-      applyState(e.payload.id, e.payload.state, e.payload.message),
-    )
+    loadKeys()
+    listen<StatePayload>('ssh://state', (e) => applyState(e.payload))
     // Cmd+K toggles the command palette. Captured at window level (works over
     // xterm too, since it fires before the terminal sees the key).
     const onKey = (e: KeyboardEvent) => {
@@ -127,10 +130,17 @@
       <div class="side-scroll">
         <button
           class="side-item"
-          class:active={ui.active === 'home'}
-          onclick={() => activate('home')}
+          class:active={ui.active === 'home' && section === 'hosts'}
+          onclick={() => { section = 'hosts'; activate('home') }}
         >
           <Server size={15} /> Hosts
+        </button>
+        <button
+          class="side-item"
+          class:active={ui.active === 'home' && section === 'keys'}
+          onclick={() => { section = 'keys'; activate('home') }}
+        >
+          <KeyRound size={15} /> Keys
         </button>
         {#each laterSections as s}
           {@const SIcon = s.icon}
@@ -155,7 +165,11 @@
     <!-- MAIN -->
     <div class="main">
       <div class="page" class:hidden={ui.active !== 'home'}>
-        <HostList onopen={open} />
+        {#if section === 'keys'}
+          <KeyManager />
+        {:else}
+          <HostList onopen={open} />
+        {/if}
       </div>
       {#each ui.tabs as tab (tab.key)}
         <div class="page" class:hidden={ui.active !== tab.key}>

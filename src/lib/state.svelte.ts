@@ -12,6 +12,10 @@ export type Host = {
   favorite: boolean
   group: string | null
   autoReconnect: boolean
+  auth: 'password' | 'key'
+  keyId: string | null // managed key from the Key Manager
+  identityFile: string | null // or a raw private-key path
+  jumps: string[] // ordered saved-host ids to ProxyJump through (bastion-1 … target)
 }
 
 export function blankHost(): Host {
@@ -26,7 +30,66 @@ export function blankHost(): Host {
     favorite: false,
     group: null,
     autoReconnect: false,
+    auth: 'password',
+    keyId: null,
+    identityFile: null,
+    jumps: [],
   }
+}
+
+// Resolve a host's jump chain (saved-host ids) into hop descriptors the backend
+// can connect through; each jump's secret is pulled from the keychain by hostId.
+export function resolveJumps(h: Host): unknown[] {
+  return (h.jumps ?? [])
+    .map((id) => store.hosts.find((x) => x.id === id))
+    .filter((j): j is Host => !!j)
+    .map((j) => ({
+      hostId: j.id,
+      host: j.hostname,
+      port: j.port,
+      user: j.user,
+      auth: j.auth,
+      keyId: j.keyId,
+      identityFile: j.identityFile,
+    }))
+}
+
+// ---- Managed SSH keys (Key Manager) ---------------------------------------
+export type Key = {
+  id: string
+  name: string
+  key_type: string // Algorithm name, e.g. "ssh-ed25519"
+  fingerprint: string // "SHA256:…"
+  public_key: string // authorized_keys line
+  created: string // unix seconds
+}
+
+export const keysStore = $state({ keys: [] as Key[] })
+
+export async function loadKeys() {
+  keysStore.keys = await invoke<Key[]>('keys_list')
+}
+
+export async function generateKey(name: string, keyType: 'ed25519' | 'rsa' | 'ecdsa'): Promise<Key> {
+  const k = await invoke<Key>('key_generate', { id: crypto.randomUUID(), name, keyType })
+  keysStore.keys.push(k)
+  return k
+}
+
+export async function importKey(name: string, pem: string, passphrase: string): Promise<Key> {
+  const k = await invoke<Key>('key_import', {
+    id: crypto.randomUUID(),
+    name,
+    pem,
+    passphrase: passphrase || null,
+  })
+  keysStore.keys.push(k)
+  return k
+}
+
+export async function deleteKey(id: string) {
+  await invoke('key_delete', { id })
+  keysStore.keys = keysStore.keys.filter((k) => k.id !== id)
 }
 
 // Auto-icon when the user hasn't picked one: a cheap keyword map, else a default.
@@ -88,8 +151,15 @@ export type Pane = {
   key: string
   host: Host | null // null = empty pane awaiting a host pick
   sessionId: string | null
-  phase: string // real ssh://state: '' | connecting | authenticating | connected | disconnected | error
+  phase: string // real ssh://state: '' | connecting | hostkey | authenticating | connected | disconnected | error
   error: string
+  method: string // auth method for the current 'authenticating' phase
+  // Host-key prompt payload (phase === 'hostkey'):
+  keyHost: string // the machine being verified (a bastion mid-chain isn't the tab host)
+  fingerprint: string
+  keyType: string
+  keyChanged: boolean
+  oldFingerprint: string
 }
 
 export type Layout = 'single' | 'split2' | 'split4'
@@ -103,7 +173,19 @@ export type Tab = {
 }
 
 function newPane(host: Host | null): Pane {
-  return { key: crypto.randomUUID(), host, sessionId: null, phase: '', error: '' }
+  return {
+    key: crypto.randomUUID(),
+    host,
+    sessionId: null,
+    phase: '',
+    error: '',
+    method: '',
+    keyHost: '',
+    fingerprint: '',
+    keyType: '',
+    keyChanged: false,
+    oldFingerprint: '',
+  }
 }
 
 export const ui = $state({ tabs: [] as Tab[], active: 'home' as string })
@@ -138,15 +220,35 @@ export function closeTab(key: string) {
 // The host that titles a tab: its first pane that has one.
 export const tabHost = (tab: Tab): Host | null => tab.panes.find((p) => p.host)?.host ?? null
 
+// The ssh://state event payload — a flattened ConnState from the Rust side.
+export type StatePayload = {
+  id: string
+  state: string
+  message?: string
+  method?: string
+  host?: string
+  fingerprint?: string
+  key_type?: string
+  changed?: boolean
+  old?: string | null
+}
+
 // Route a real connection-state event to its pane (matched by session id).
-export function applyState(id: string, phase: string, message?: string) {
+export function applyState(p: StatePayload) {
   for (const tab of ui.tabs) {
-    const pane = tab.panes.find((p) => p.sessionId === id)
-    if (pane) {
-      pane.phase = phase
-      pane.error = phase === 'error' ? (message ?? 'error') : ''
-      return
+    const pane = tab.panes.find((x) => x.sessionId === p.id)
+    if (!pane) continue
+    pane.phase = p.state
+    pane.error = p.state === 'error' ? (p.message ?? 'error') : ''
+    if (p.state === 'authenticating') pane.method = p.method ?? ''
+    if (p.state === 'hostkey') {
+      pane.keyHost = p.host ?? ''
+      pane.fingerprint = p.fingerprint ?? ''
+      pane.keyType = p.key_type ?? ''
+      pane.keyChanged = !!p.changed
+      pane.oldFingerprint = p.old ?? ''
     }
+    return
   }
 }
 
