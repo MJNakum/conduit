@@ -4,6 +4,7 @@ mod keys;
 mod knownhosts;
 mod logging;
 mod secrets;
+mod snippets;
 mod ssh;
 mod sshconfig;
 
@@ -38,7 +39,10 @@ pub fn run() {
             forwards::forward_delete,
             forwards::forward_start,
             forwards::forward_stop,
-            logging::logs_dir_path
+            logging::logs_dir_path,
+            snippets::snippets_list,
+            snippets::snippet_save,
+            snippets::snippet_delete
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

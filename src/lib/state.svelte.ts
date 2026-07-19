@@ -162,6 +162,49 @@ export async function deleteKey(id: string) {
   keysStore.keys = keysStore.keys.filter((k) => k.id !== id)
 }
 
+// ---- Snippets -------------------------------------------------------------
+export type Snippet = { id: string; name: string; command: string; confirm: boolean }
+
+export function blankSnippet(): Snippet {
+  return { id: crypto.randomUUID(), name: '', command: '', confirm: false }
+}
+
+export const snippetsStore = $state({ list: [] as Snippet[] })
+
+export async function loadSnippets() {
+  snippetsStore.list = await invoke<Snippet[]>('snippets_list')
+}
+export async function saveSnippet(s: Snippet) {
+  const saved = await invoke<Snippet>('snippet_save', { snippet: s })
+  const i = snippetsStore.list.findIndex((x) => x.id === saved.id)
+  if (i >= 0) snippetsStore.list[i] = saved
+  else snippetsStore.list.push(saved)
+}
+export async function deleteSnippet(id: string) {
+  await invoke('snippet_delete', { id })
+  snippetsStore.list = snippetsStore.list.filter((s) => s.id !== id)
+}
+
+// Distinct {{var}} tokens in a snippet body, in first-seen order.
+export function snippetVars(command: string): string[] {
+  const out: string[] = []
+  for (const m of command.matchAll(/\{\{\s*(\w+)\s*\}\}/g)) {
+    if (!out.includes(m[1])) out.push(m[1])
+  }
+  return out
+}
+
+export function fillSnippet(command: string, values: Record<string, string>): string {
+  return command.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => values[k] ?? '')
+}
+
+// Send a resolved command to the most-recently-active session (Enter appended).
+export function runInActiveSession(command: string): boolean {
+  if (!ui.lastSession) return false
+  invoke('ssh_write', { id: ui.lastSession, data: command + '\r' })
+  return true
+}
+
 // Auto-icon when the user hasn't picked one: a cheap keyword map, else a default.
 // Returns a lucide icon component (no emoji anywhere — see CLAUDE.md).
 export function hostIcon(h: Host): typeof Icon {
@@ -258,7 +301,9 @@ function newPane(host: Host | null): Pane {
   }
 }
 
-export const ui = $state({ tabs: [] as Tab[], active: 'home' as string })
+// `lastSession` = the most-recently-active connected pane's session id; snippet
+// "Run" targets it (so it works even while the Snippets section is showing).
+export const ui = $state({ tabs: [] as Tab[], active: 'home' as string, lastSession: null as string | null })
 
 export function openTab(host: Host): Tab {
   const pane = newPane(host)

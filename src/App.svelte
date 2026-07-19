@@ -18,6 +18,7 @@
   import Palette from './lib/Palette.svelte'
   import KeyManager from './lib/KeyManager.svelte'
   import PortForwards from './lib/PortForwards.svelte'
+  import Snippets from './lib/Snippets.svelte'
   import Appearance from './lib/Appearance.svelte'
   import { settings, applyAppTheme } from './lib/theme.svelte'
   import { loadForwards, applyForwardState } from './lib/state.svelte'
@@ -25,6 +26,7 @@
     ui,
     loadHosts,
     loadKeys,
+    loadSnippets,
     openTab,
     closeTab,
     applyState,
@@ -39,13 +41,12 @@
   let paletteOpen = $state(false)
   let appearanceOpen = $state(false)
   // Which home-view section is showing (only when no terminal tab is active).
-  let section = $state<'hosts' | 'keys' | 'forwards'>('hosts')
+  let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards'>('hosts')
 
-  // Sidebar sections. Hosts + Keys + Port Forwards are wired — Snippets/History
-  // and the Groups tree are inert placeholders for their later phases
+  // Sidebar sections. Hosts + Keys + Snippets + Port Forwards are wired —
+  // History and the Groups tree are inert placeholders for their later phases
   // (see docs/mvp-plan.md), shown so the shell has correct proportions.
   const laterSections = [
-    { label: 'Snippets', icon: Zap },
     { label: 'History', icon: History },
   ]
 
@@ -54,6 +55,7 @@
     loadHosts()
     loadKeys()
     loadForwards()
+    loadSnippets()
     listen<StatePayload>('ssh://state', (e) => applyState(e.payload))
     listen<{ id: string; state: string; message?: string }>('forward://state', (e) =>
       applyForwardState(e.payload.id, e.payload.state, e.payload.message),
@@ -153,6 +155,13 @@
         </button>
         <button
           class="side-item"
+          class:active={ui.active === 'home' && section === 'snippets'}
+          onclick={() => { section = 'snippets'; activate('home') }}
+        >
+          <Zap size={15} /> Snippets
+        </button>
+        <button
+          class="side-item"
           class:active={ui.active === 'home' && section === 'forwards'}
           onclick={() => { section = 'forwards'; activate('home') }}
         >
@@ -183,6 +192,8 @@
       <div class="page" class:hidden={ui.active !== 'home'}>
         {#if section === 'keys'}
           <KeyManager />
+        {:else if section === 'snippets'}
+          <Snippets />
         {:else if section === 'forwards'}
           <PortForwards />
         {:else}

@@ -3,7 +3,7 @@
   import { ShieldAlert } from '@lucide/svelte'
   import Terminal from './Terminal.svelte'
   import Stepper from './Stepper.svelte'
-  import { store, hostIcon, resolveJumps, type Pane } from './state.svelte'
+  import { store, ui, hostIcon, resolveJumps, type Pane } from './state.svelte'
   import { resolveScheme, xtermTheme, settings } from './theme.svelte'
 
   let {
@@ -16,6 +16,10 @@
   let saveSecret = $state(true)
   let hasSaved = $state(false)
   const Icon = $derived(pane.host ? hostIcon(pane.host) : null)
+  // Track the most-recently-active connected session so snippet "Run" has a target.
+  $effect(() => {
+    if (active && pane.phase === 'connected' && pane.sessionId) ui.lastSession = pane.sessionId
+  })
   // Managed keys carry no secret (private material is unencrypted in the keychain),
   // so key-auth-with-a-managed-key needs no prompt.
   const managedKey = $derived(pane.host?.auth === 'key' && !!pane.host?.keyId)
