@@ -17,12 +17,14 @@
   import TabView from './lib/TabView.svelte'
   import Palette from './lib/Palette.svelte'
   import KeyManager from './lib/KeyManager.svelte'
+  import Snippets from './lib/Snippets.svelte'
   import Appearance from './lib/Appearance.svelte'
   import { settings, applyAppTheme } from './lib/theme.svelte'
   import {
     ui,
     loadHosts,
     loadKeys,
+    loadSnippets,
     openTab,
     closeTab,
     applyState,
@@ -37,13 +39,12 @@
   let paletteOpen = $state(false)
   let appearanceOpen = $state(false)
   // Which home-view section is showing (only when no terminal tab is active).
-  let section = $state<'hosts' | 'keys'>('hosts')
+  let section = $state<'hosts' | 'keys' | 'snippets'>('hosts')
 
-  // Sidebar sections. Hosts + Keys are wired — Snippets/Port Forwards/History
+  // Sidebar sections. Hosts + Keys + Snippets are wired — Port Forwards/History
   // and the Groups tree are inert placeholders for their later phases
   // (see docs/mvp-plan.md), shown so the shell has correct proportions.
   const laterSections = [
-    { label: 'Snippets', icon: Zap },
     { label: 'Port Forwards', icon: ArrowRightLeft },
     { label: 'History', icon: History },
   ]
@@ -52,6 +53,7 @@
     applyAppTheme()
     loadHosts()
     loadKeys()
+    loadSnippets()
     listen<StatePayload>('ssh://state', (e) => applyState(e.payload))
     // Cmd+K toggles the command palette. Captured at window level (works over
     // xterm too, since it fires before the terminal sees the key).
@@ -146,6 +148,13 @@
         >
           <KeyRound size={15} /> Keys
         </button>
+        <button
+          class="side-item"
+          class:active={ui.active === 'home' && section === 'snippets'}
+          onclick={() => { section = 'snippets'; activate('home') }}
+        >
+          <Zap size={15} /> Snippets
+        </button>
         {#each laterSections as s}
           {@const SIcon = s.icon}
           <div class="side-item soon" aria-disabled="true" title="Coming in a later phase">
@@ -171,6 +180,8 @@
       <div class="page" class:hidden={ui.active !== 'home'}>
         {#if section === 'keys'}
           <KeyManager />
+        {:else if section === 'snippets'}
+          <Snippets />
         {:else}
           <HostList onopen={open} />
         {/if}
