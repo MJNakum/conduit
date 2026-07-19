@@ -17,18 +17,27 @@
   import TabView from './lib/TabView.svelte'
   import Palette from './lib/Palette.svelte'
   import KeyManager from './lib/KeyManager.svelte'
+  import PortForwards from './lib/PortForwards.svelte'
+  import Snippets from './lib/Snippets.svelte'
   import Appearance from './lib/Appearance.svelte'
+  import BroadcastBar from './lib/BroadcastBar.svelte'
+  import { Radio } from '@lucide/svelte'
   import { settings, applyAppTheme } from './lib/theme.svelte'
+  import { loadForwards, applyForwardState } from './lib/state.svelte'
   import {
     ui,
+    broadcast,
+    connectedSessions,
     loadHosts,
     loadKeys,
+    loadSnippets,
     openTab,
     closeTab,
     applyState,
     activeCount,
     hostIcon,
     tabHost,
+    groupNodes,
     type Host,
     type Tab,
     type StatePayload,
@@ -37,14 +46,12 @@
   let paletteOpen = $state(false)
   let appearanceOpen = $state(false)
   // Which home-view section is showing (only when no terminal tab is active).
-  let section = $state<'hosts' | 'keys'>('hosts')
+  let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards'>('hosts')
 
-  // Sidebar sections. Hosts + Keys are wired — Snippets/Port Forwards/History
-  // and the Groups tree are inert placeholders for their later phases
+  // Sidebar sections. Hosts + Keys + Snippets + Port Forwards are wired —
+  // History and the Groups tree are inert placeholders for their later phases
   // (see docs/mvp-plan.md), shown so the shell has correct proportions.
   const laterSections = [
-    { label: 'Snippets', icon: Zap },
-    { label: 'Port Forwards', icon: ArrowRightLeft },
     { label: 'History', icon: History },
   ]
 
@@ -52,13 +59,20 @@
     applyAppTheme()
     loadHosts()
     loadKeys()
+    loadForwards()
+    loadSnippets()
     listen<StatePayload>('ssh://state', (e) => applyState(e.payload))
+    listen<{ id: string; state: string; message?: string }>('forward://state', (e) =>
+      applyForwardState(e.payload.id, e.payload.state, e.payload.message),
+    )
     // Cmd+K toggles the command palette. Captured at window level (works over
     // xterm too, since it fires before the terminal sees the key).
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey && e.key === 'k') {
         e.preventDefault()
         paletteOpen = !paletteOpen
+      } else if (e.key === 'Escape' && broadcast.on) {
+        broadcast.on = false
       }
     }
     window.addEventListener('keydown', onKey)
@@ -134,8 +148,8 @@
       <div class="side-scroll">
         <button
           class="side-item"
-          class:active={ui.active === 'home' && section === 'hosts'}
-          onclick={() => { section = 'hosts'; activate('home') }}
+          class:active={ui.active === 'home' && section === 'hosts' && ui.group === null}
+          onclick={() => { section = 'hosts'; ui.group = null; activate('home') }}
         >
           <Server size={15} /> Hosts
         </button>
@@ -146,6 +160,20 @@
         >
           <KeyRound size={15} /> Keys
         </button>
+        <button
+          class="side-item"
+          class:active={ui.active === 'home' && section === 'snippets'}
+          onclick={() => { section = 'snippets'; activate('home') }}
+        >
+          <Zap size={15} /> Snippets
+        </button>
+        <button
+          class="side-item"
+          class:active={ui.active === 'home' && section === 'forwards'}
+          onclick={() => { section = 'forwards'; activate('home') }}
+        >
+          <ArrowRightLeft size={15} /> Port Forwards
+        </button>
         {#each laterSections as s}
           {@const SIcon = s.icon}
           <div class="side-item soon" aria-disabled="true" title="Coming in a later phase">
@@ -153,12 +181,20 @@
           </div>
         {/each}
         <div class="side-head">Groups</div>
-        <div class="side-item soon" aria-disabled="true" title="Coming in a later phase">
-          <ChevronRight size={15} /> Production
-        </div>
-        <div class="side-item soon" aria-disabled="true" title="Coming in a later phase">
-          <ChevronRight size={15} /> Clients
-        </div>
+        {#if groupNodes().length === 0}
+          <div class="side-item soon" aria-disabled="true">Set a host's Group to build the tree</div>
+        {:else}
+          {#each groupNodes() as g (g.path)}
+            <button
+              class="side-item"
+              style:padding-left={`${9 + g.depth * 14}px`}
+              class:active={ui.active === 'home' && section === 'hosts' && ui.group === g.path}
+              onclick={() => { section = 'hosts'; ui.group = g.path; activate('home') }}
+            >
+              <ChevronRight size={15} /> {g.label}
+            </button>
+          {/each}
+        {/if}
       </div>
       <div class="vault">
         <Lock size={14} color="hsl(var(--primary))" /> Vault unlocked
@@ -171,6 +207,10 @@
       <div class="page" class:hidden={ui.active !== 'home'}>
         {#if section === 'keys'}
           <KeyManager />
+        {:else if section === 'snippets'}
+          <Snippets />
+        {:else if section === 'forwards'}
+          <PortForwards />
         {:else}
           <HostList onopen={open} />
         {/if}
@@ -183,10 +223,18 @@
     </div>
   </div>
 
+  {#if broadcast.on}
+    <BroadcastBar />
+  {/if}
+
   <!-- FOOTER — slim global status only (per-session liveness lives on tab dots) -->
   <footer>
     <span>{activeCount()} session{activeCount() === 1 ? '' : 's'} active</span>
     <span class="spacer"></span>
+    <button class="themebtn" class:bcast={broadcast.on} onclick={() => (broadcast.on = !broadcast.on)} disabled={connectedSessions().length === 0}>
+      <Radio size={12} /> Broadcast
+    </button>
+    <span>·</span>
     <button class="themebtn" onclick={() => (appearanceOpen = true)}>Theme: {settings.appTheme}</button>
     <span>·</span>
     <span class="mono">⌘K</span>
@@ -400,6 +448,9 @@
     flex: 1;
   }
   .themebtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     background: none;
     border: none;
     color: hsl(var(--muted-foreground));
@@ -413,5 +464,13 @@
   .themebtn:hover {
     background: hsl(var(--muted));
     color: hsl(var(--foreground));
+  }
+  .themebtn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .themebtn.bcast {
+    color: hsl(var(--amber));
+    background: hsl(var(--amber) / 0.15);
   }
 </style>

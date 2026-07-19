@@ -7,6 +7,7 @@ export type Host = {
   hostname: string
   port: number
   user: string
+  protocol: 'ssh' | 'telnet'
   tags: string[]
   color: string | null
   favorite: boolean
@@ -20,6 +21,7 @@ export type Host = {
   scheme: string | null // per-connection terminal scheme; null = global default
   font: string | null
   fontSize: number | null
+  logging: boolean // auto-save this host's terminal output to a log file
 }
 
 export function blankHost(): Host {
@@ -29,6 +31,7 @@ export function blankHost(): Host {
     hostname: '',
     port: 22,
     user: '',
+    protocol: 'ssh',
     tags: [],
     color: null,
     favorite: false,
@@ -42,12 +45,79 @@ export function blankHost(): Host {
     scheme: null,
     font: null,
     fontSize: null,
+    logging: false,
   }
 }
+
+// ---- Port forwards --------------------------------------------------------
+export type Forward = {
+  id: string
+  name: string
+  hostId: string
+  kind: 'local' | 'remote' | 'dynamic'
+  bindAddr: string
+  bindPort: number
+  destHost: string
+  destPort: number
+}
+
+export function blankForward(): Forward {
+  return {
+    id: crypto.randomUUID(),
+    name: '',
+    hostId: '',
+    kind: 'local',
+    bindAddr: '127.0.0.1',
+    bindPort: 8080,
+    destHost: '',
+    destPort: 0,
+  }
+}
+
+// list = saved configs; status = live per-forward state (not persisted).
+export const forwardsStore = $state({
+  list: [] as Forward[],
+  status: {} as Record<string, { state: string; message?: string }>,
+})
+
+export async function loadForwards() {
+  forwardsStore.list = await invoke<Forward[]>('forwards_list')
+}
+export async function saveForward(f: Forward) {
+  const saved = await invoke<Forward>('forward_save', { forward: f })
+  const i = forwardsStore.list.findIndex((x) => x.id === saved.id)
+  if (i >= 0) forwardsStore.list[i] = saved
+  else forwardsStore.list.push(saved)
+}
+export async function deleteForward(id: string) {
+  await invoke('forward_delete', { id })
+  forwardsStore.list = forwardsStore.list.filter((f) => f.id !== id)
+  delete forwardsStore.status[id]
+}
+export const startForward = (id: string) => invoke('forward_start', { id })
+export const stopForward = (id: string) => invoke('forward_stop', { id })
+
+// forward://state payload router.
+export function applyForwardState(id: string, state: string, message?: string) {
+  forwardsStore.status[id] = { state, message }
+}
+
+// ---- SFTP -----------------------------------------------------------------
+export type SftpEntry = { name: string; is_dir: boolean; size: number }
+export const openSftp = (hostId: string) =>
+  invoke<{ id: string; cwd: string }>('sftp_open', { hostId })
+export const sftpList = (id: string, path: string) =>
+  invoke<SftpEntry[]>('sftp_list', { id, path })
+export const sftpDownload = (id: string, remote: string, local: string) =>
+  invoke('sftp_download', { id, remote, local })
+export const sftpUpload = (id: string, local: string, remote: string) =>
+  invoke('sftp_upload', { id, local, remote })
+export const sftpClose = (id: string) => invoke('sftp_close', { id })
 
 // ---- ssh_config import / export (no lock-in) ------------------------------
 export const importSshConfig = (path?: string) =>
   invoke<Host[]>('ssh_config_import', { path: path ?? null })
+export const importPutty = (path: string) => invoke<Host[]>('putty_import', { path })
 export const exportSshConfig = () => invoke<string>('ssh_config_export')
 export const writeSshConfig = (path: string, text: string) =>
   invoke('ssh_config_export_write', { path, text })
@@ -107,6 +177,49 @@ export async function deleteKey(id: string) {
   keysStore.keys = keysStore.keys.filter((k) => k.id !== id)
 }
 
+// ---- Snippets -------------------------------------------------------------
+export type Snippet = { id: string; name: string; command: string; confirm: boolean }
+
+export function blankSnippet(): Snippet {
+  return { id: crypto.randomUUID(), name: '', command: '', confirm: false }
+}
+
+export const snippetsStore = $state({ list: [] as Snippet[] })
+
+export async function loadSnippets() {
+  snippetsStore.list = await invoke<Snippet[]>('snippets_list')
+}
+export async function saveSnippet(s: Snippet) {
+  const saved = await invoke<Snippet>('snippet_save', { snippet: s })
+  const i = snippetsStore.list.findIndex((x) => x.id === saved.id)
+  if (i >= 0) snippetsStore.list[i] = saved
+  else snippetsStore.list.push(saved)
+}
+export async function deleteSnippet(id: string) {
+  await invoke('snippet_delete', { id })
+  snippetsStore.list = snippetsStore.list.filter((s) => s.id !== id)
+}
+
+// Distinct {{var}} tokens in a snippet body, in first-seen order.
+export function snippetVars(command: string): string[] {
+  const out: string[] = []
+  for (const m of command.matchAll(/\{\{\s*(\w+)\s*\}\}/g)) {
+    if (!out.includes(m[1])) out.push(m[1])
+  }
+  return out
+}
+
+export function fillSnippet(command: string, values: Record<string, string>): string {
+  return command.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => values[k] ?? '')
+}
+
+// Send a resolved command to the most-recently-active session (Enter appended).
+export function runInActiveSession(command: string): boolean {
+  if (!ui.lastSession) return false
+  invoke('ssh_write', { id: ui.lastSession, data: command + '\r' })
+  return true
+}
+
 // Auto-icon when the user hasn't picked one: a cheap keyword map, else a default.
 // Returns a lucide icon component (no emoji anywhere — see CLAUDE.md).
 export function hostIcon(h: Host): typeof Icon {
@@ -157,6 +270,45 @@ export async function deleteHost(id: string) {
   store.hosts = store.hosts.filter((h) => h.id !== id)
 }
 
+// ---- Saved views (host-list filters) --------------------------------------
+// A view is a named search + tag filter, so only the relevant subset shows.
+// UI pref, kept in localStorage (on-device).
+export type View = { id: string; name: string; tags: string[]; search: string }
+export const viewsStore = $state({
+  list: JSON.parse(localStorage.getItem('ssh.views') ?? '[]') as View[],
+})
+function persistViews() {
+  localStorage.setItem('ssh.views', JSON.stringify(viewsStore.list))
+}
+export function saveView(v: View) {
+  const i = viewsStore.list.findIndex((x) => x.id === v.id)
+  if (i >= 0) viewsStore.list[i] = v
+  else viewsStore.list.push(v)
+  persistViews()
+}
+export function deleteView(id: string) {
+  viewsStore.list = viewsStore.list.filter((v) => v.id !== id)
+  persistViews()
+}
+
+// ---- Nested groups --------------------------------------------------------
+// Host.group is a "/"-separated path (e.g. "Clients/Acme"); the sidebar renders
+// the derived tree. Selecting a group filters the host list to it + descendants.
+export function groupNodes(): { path: string; depth: number; label: string }[] {
+  const set = new Set<string>()
+  for (const h of store.hosts) {
+    if (!h.group) continue
+    const parts = h.group.split('/').map((s) => s.trim()).filter(Boolean)
+    for (let i = 0; i < parts.length; i++) set.add(parts.slice(0, i + 1).join('/'))
+  }
+  return [...set]
+    .sort()
+    .map((p) => ({ path: p, depth: p.split('/').length - 1, label: p.split('/').pop()! }))
+}
+
+// Is host `h` inside group path `g` (exact or a descendant)?
+export const inGroup = (h: Host, g: string) => !!h.group && (h.group === g || h.group.startsWith(g + '/'))
+
 // ---- Tabs & panes ---------------------------------------------------------
 // Tab 0 (the pinned "All Sessions" host list) is not a Tab object; it's the
 // `active === 'home'` state. Each tab holds 1/2/4 panes; every pane is its own
@@ -203,7 +355,14 @@ function newPane(host: Host | null): Pane {
   }
 }
 
-export const ui = $state({ tabs: [] as Tab[], active: 'home' as string })
+// `lastSession` = the most-recently-active connected pane's session id (snippet
+// "Run" targets it). `group` = selected group-path filter for the host list.
+export const ui = $state({
+  tabs: [] as Tab[],
+  active: 'home' as string,
+  lastSession: null as string | null,
+  group: null as string | null,
+})
 
 export function openTab(host: Host): Tab {
   const pane = newPane(host)
@@ -230,6 +389,29 @@ export function closeTab(key: string) {
   tab?.panes.forEach((p) => p.sessionId && invoke('ssh_disconnect', { id: p.sessionId }))
   ui.tabs = ui.tabs.filter((t) => t.key !== key)
   if (ui.active === key) ui.active = 'home'
+}
+
+// ---- Broadcast input ------------------------------------------------------
+// Type once, send to many. `exclude` drops session ids from the fan-out; `once`
+// auto-exits after a single send. Deliberately loud (see design §9).
+export const broadcast = $state({ on: false, exclude: [] as string[], once: false })
+
+// Every currently connected session, across all tabs/panes.
+export function connectedSessions(): { id: string; name: string }[] {
+  const out: { id: string; name: string }[] = []
+  for (const t of ui.tabs)
+    for (const p of t.panes)
+      if (p.sessionId && p.phase === 'connected')
+        out.push({ id: p.sessionId, name: p.host?.name ?? '(host)' })
+  return out
+}
+
+export const broadcastTargets = () =>
+  connectedSessions().filter((s) => !broadcast.exclude.includes(s.id))
+
+export function broadcastLine(text: string) {
+  for (const t of broadcastTargets()) invoke('ssh_write', { id: t.id, data: text + '\r' })
+  if (broadcast.once) broadcast.on = false
 }
 
 // The host that titles a tab: its first pane that has one.

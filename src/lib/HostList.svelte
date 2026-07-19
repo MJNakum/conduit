@@ -1,27 +1,61 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { Search, Plus, Star, Pencil, Trash2, Rows3, Rows4, Upload, Download } from '@lucide/svelte'
+  import { Search, Plus, Star, Pencil, Trash2, Rows3, Rows4, Upload, Download, X, FolderOpen } from '@lucide/svelte'
   import HostModal from './HostModal.svelte'
   import ImportExport from './ImportExport.svelte'
-  import { store, ui, deleteHost, hostIcon, blankHost, tabHost, type Host } from './state.svelte'
+  import Sftp from './Sftp.svelte'
+  import {
+    store,
+    ui,
+    deleteHost,
+    hostIcon,
+    blankHost,
+    tabHost,
+    viewsStore,
+    saveView,
+    deleteView,
+    inGroup,
+    type Host,
+    type View,
+  } from './state.svelte'
 
   let { onopen }: { onopen: (h: Host) => void } = $props()
 
   let filter = $state('')
+  let activeTags = $state<string[]>([]) // hosts must carry every active tag
   let editing = $state<Host | null>(null)
+  let sftpHost = $state<Host | null>(null)
   let portio = $state<'import' | 'export' | null>(null)
   let dense = $state(false)
   let sel = $state(0)
   let searchEl = $state<HTMLInputElement>()
 
   const q = $derived(filter.toLowerCase().trim())
+  // Distinct tags across all hosts, for the filter chips.
+  const allTags = $derived([...new Set(store.hosts.flatMap((h) => h.tags))].sort())
+
   function match(h: Host): boolean {
+    if (ui.group && !inGroup(h, ui.group)) return false
+    if (activeTags.length && !activeTags.every((t) => h.tags.includes(t))) return false
     if (!q) return true
     return (
       h.name.toLowerCase().includes(q) ||
       h.hostname.toLowerCase().includes(q) ||
       h.tags.some((t) => t.toLowerCase().includes(q))
     )
+  }
+
+  function toggleTag(t: string) {
+    activeTags = activeTags.includes(t) ? activeTags.filter((x) => x !== t) : [...activeTags, t]
+  }
+
+  function applyView(v: View) {
+    filter = v.search
+    activeTags = [...v.tags]
+  }
+  function saveCurrentView() {
+    const name = prompt('Save view as:')?.trim()
+    if (name) saveView({ id: crypto.randomUUID(), name, tags: [...activeTags], search: filter })
   }
 
   const filtered = $derived(store.hosts.filter(match))
@@ -113,6 +147,24 @@
   </button>
 </div>
 
+{#if allTags.length || viewsStore.list.length}
+  <div class="filterbar">
+    {#each viewsStore.list as v (v.id)}
+      <span class="viewchip">
+        <button onclick={() => applyView(v)}>{v.name}</button>
+        <button class="vx" aria-label="Delete view" onclick={() => deleteView(v.id)}><X size={11} /></button>
+      </span>
+    {/each}
+    {#each allTags as t}
+      <button class="tagchip" class:on={activeTags.includes(t)} onclick={() => toggleTag(t)}>{t}</button>
+    {/each}
+    {#if activeTags.length || filter}
+      <button class="fbtn" onclick={saveCurrentView}>Save view</button>
+      <button class="fbtn" onclick={() => { activeTags = []; filter = '' }}>Clear</button>
+    {/if}
+  </div>
+{/if}
+
 {#if live.length}
   <div class="activebar">
     {#each live as l (l.key)}
@@ -165,6 +217,9 @@
     {#each h.tags as t}<span class="chip tag">{t}</span>{/each}
     <span class="spacer"></span>
     <span class="actions">
+      <button class="iconbtn" title="SFTP" aria-label="SFTP" onclick={(e) => { e.stopPropagation(); sftpHost = h }}>
+        <FolderOpen size={14} />
+      </button>
       <button class="iconbtn" title="Edit" aria-label="Edit" onclick={(e) => { e.stopPropagation(); editing = { ...h } }}>
         <Pencil size={14} />
       </button>
@@ -179,6 +234,9 @@
 {#if editing}
   <HostModal host={editing} onclose={() => (editing = null)} />
 {/if}
+{#if sftpHost}
+  <Sftp host={sftpHost} onclose={() => (sftpHost = null)} />
+{/if}
 {#if portio}
   <ImportExport mode={portio} onclose={() => (portio = null)} />
 {/if}
@@ -192,6 +250,61 @@
     gap: 8px;
     padding: 0 12px;
     border-bottom: 1px solid hsl(var(--border));
+  }
+  .filterbar {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .tagchip,
+  .fbtn {
+    padding: 3px 10px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 999px;
+    background: hsl(var(--card));
+    color: hsl(var(--muted-foreground));
+    font: inherit;
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .tagchip:hover,
+  .fbtn:hover {
+    background: hsl(var(--muted));
+  }
+  .tagchip.on {
+    background: hsl(var(--primary) / 0.15);
+    border-color: hsl(var(--primary) / 0.5);
+    color: hsl(var(--foreground));
+  }
+  .viewchip {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid hsl(var(--primary) / 0.4);
+    background: hsl(var(--primary) / 0.1);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .viewchip button {
+    border: none;
+    background: none;
+    color: hsl(var(--foreground));
+    font: inherit;
+    font-size: 11.5px;
+    padding: 3px 6px 3px 10px;
+    cursor: pointer;
+  }
+  .viewchip .vx {
+    display: grid;
+    place-items: center;
+    padding: 0 7px 0 2px;
+    color: hsl(var(--muted-foreground));
+  }
+  .viewchip .vx:hover {
+    color: hsl(var(--destructive));
   }
   .seg {
     display: flex;

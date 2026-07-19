@@ -48,11 +48,21 @@
           <label class="check"><input id="f-fav" type="checkbox" bind:checked={draft.favorite} /> Starred</label>
         </div>
       </div>
-      <div class="grid2">
+      <div class="grid3">
         <div class="field"><label for="f-host">Address</label><input id="f-host" class="mono" bind:value={draft.hostname} placeholder="example.com" /></div>
         <div class="field"><label for="f-user">Username</label><input id="f-user" class="mono" bind:value={draft.user} placeholder="root" /></div>
+        <div class="field">
+          <label for="f-proto">Protocol</label>
+          <select id="f-proto" bind:value={draft.protocol}>
+            <option value="ssh">SSH</option>
+            <option value="telnet">Telnet</option>
+          </select>
+        </div>
       </div>
-      <div class="field"><label for="f-tags">Tags</label><input id="f-tags" bind:value={tagsText} placeholder="prod, web" /></div>
+      <div class="grid2">
+        <div class="field"><label for="f-tags">Tags</label><input id="f-tags" bind:value={tagsText} placeholder="prod, web" /></div>
+        <div class="field"><label for="f-group">Group</label><input id="f-group" value={draft.group ?? ''} oninput={(e) => (draft.group = (e.currentTarget as HTMLInputElement).value || null)} placeholder="Clients/Acme" /></div>
+      </div>
       <div class="grid2">
         <div class="field">
           <label for="f-color">Accent color</label>
@@ -62,6 +72,10 @@
           <label for="f-recon">Auto-reconnect</label>
           <label class="check"><input id="f-recon" type="checkbox" bind:checked={draft.autoReconnect} /> Reconnect on drop</label>
         </div>
+      </div>
+      <div class="field">
+        <label for="f-log">Session logging</label>
+        <label class="check"><input id="f-log" type="checkbox" bind:checked={draft.logging} /> Auto-save terminal output to a log file</label>
       </div>
       <div class="grid2">
         <div class="field">

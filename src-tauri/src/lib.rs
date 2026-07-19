@@ -1,14 +1,22 @@
+mod forwards;
 mod hosts;
 mod keys;
 mod knownhosts;
+mod logging;
+mod putty;
 mod secrets;
+mod sftp;
+mod snippets;
 mod ssh;
 mod sshconfig;
+mod telnet;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(ssh::SshState::default())
+        .manage(forwards::ForwardState::default())
+        .manage(sftp::SftpState::default())
         .invoke_handler(tauri::generate_handler![
             ssh::ssh_connect,
             ssh::ssh_write,
@@ -16,6 +24,7 @@ pub fn run() {
             ssh::ssh_disconnect,
             ssh::ssh_reconnect,
             ssh::ssh_host_key_decision,
+            ssh::telnet_connect,
             hosts::hosts_list,
             hosts::host_save,
             hosts::host_delete,
@@ -29,7 +38,22 @@ pub fn run() {
             secrets::secret_delete,
             sshconfig::ssh_config_import,
             sshconfig::ssh_config_export,
-            sshconfig::ssh_config_export_write
+            sshconfig::ssh_config_export_write,
+            forwards::forwards_list,
+            forwards::forward_save,
+            forwards::forward_delete,
+            forwards::forward_start,
+            forwards::forward_stop,
+            logging::logs_dir_path,
+            snippets::snippets_list,
+            snippets::snippet_save,
+            snippets::snippet_delete,
+            putty::putty_import,
+            sftp::sftp_open,
+            sftp::sftp_list,
+            sftp::sftp_download,
+            sftp::sftp_upload,
+            sftp::sftp_close
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
