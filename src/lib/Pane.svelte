@@ -28,11 +28,15 @@
   // Telnet has no client auth; SSH managed-key/saved-secret also skip the prompt.
   const promptSecret = $derived(!isTelnet && !hasSaved && !managedKey)
 
-  // Does the keychain already hold a secret for this host? If so, skip the prompt.
+  // Does the keychain already hold a password for this host? Only relevant for
+  // password-auth SSH — probing key/telnet hosts would trigger a needless
+  // Keychain prompt for a slot they never use.
   $effect(() => {
     const h = pane.host
-    if (h && !pane.sessionId) {
+    if (h && !pane.sessionId && h.auth === 'password' && h.protocol !== 'telnet') {
       invoke<boolean>('secret_has', { hostId: h.id }).then((v) => (hasSaved = v))
+    } else {
+      hasSaved = false
     }
   })
 

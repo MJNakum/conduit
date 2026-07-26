@@ -257,6 +257,16 @@ export const store = $state({ hosts: [] as Host[] })
 
 export async function loadHosts() {
   store.hosts = await invoke<Host[]>('hosts_list')
+  purgeStaleSecrets()
+}
+
+// One-time cleanup of junk empty Keychain entries an earlier bug wrote for
+// key/telnet hosts (they never use the password slot). Delete raises no prompt.
+function purgeStaleSecrets() {
+  if (localStorage.getItem('ssh.secretsPurged')) return
+  const ids = store.hosts.filter((h) => h.auth === 'key' || h.protocol === 'telnet').map((h) => h.id)
+  localStorage.setItem('ssh.secretsPurged', '1')
+  if (ids.length) invoke('secrets_purge', { hostIds: ids })
 }
 
 export async function saveHost(h: Host) {

@@ -68,3 +68,18 @@ pub fn secret_delete(host_id: String) -> Result<(), String> {
         Err(e) => Err(format!("keychain delete: {e}")),
     }
 }
+
+/// Best-effort removal of password slots for the given host ids — used to clear
+/// junk empty entries an earlier bug wrote for key/telnet hosts. Delete never
+/// decrypts, so this raises no Keychain prompt. Missing entries are ignored.
+#[tauri::command]
+pub fn secrets_purge(host_ids: Vec<String>) -> usize {
+    let mut cache = cache().lock().unwrap();
+    host_ids
+        .into_iter()
+        .filter(|id| {
+            cache.remove(id);
+            entry(id).map(|e| e.delete_credential().is_ok()).unwrap_or(false)
+        })
+        .count()
+}

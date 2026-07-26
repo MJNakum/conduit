@@ -37,6 +37,7 @@ pub fn run() {
             secrets::secret_set,
             secrets::secret_has,
             secrets::secret_delete,
+            secrets::secrets_purge,
             sshconfig::ssh_config_import,
             sshconfig::ssh_config_export,
             sshconfig::ssh_config_export_write,
