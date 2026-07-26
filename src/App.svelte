@@ -20,6 +20,7 @@
   import KeyManager from './lib/KeyManager.svelte'
   import PortForwards from './lib/PortForwards.svelte'
   import Snippets from './lib/Snippets.svelte'
+  import HistoryView from './lib/History.svelte'
   import Settings from './lib/Settings.svelte'
   import Toaster from './lib/Toaster.svelte'
   import LockScreen from './lib/LockScreen.svelte'
@@ -53,15 +54,8 @@
 
   let paletteOpen = $state(false)
   // Which home-view section is showing (only when no terminal tab is active).
-  let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards' | 'settings'>('hosts')
+  let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards' | 'history' | 'settings'>('hosts')
   let settingsTab = $state<'appearance' | 'shortcuts'>('appearance')
-
-  // Sidebar sections. Hosts + Keys + Snippets + Port Forwards are wired —
-  // History and the Groups tree are inert placeholders for their later phases
-  // (see docs/mvp-plan.md), shown so the shell has correct proportions.
-  const laterSections = [
-    { label: 'History', icon: History },
-  ]
 
   onMount(() => {
     applyAppTheme()
@@ -232,12 +226,13 @@
         >
           <SlidersHorizontal size={15} /> Settings
         </button>
-        {#each laterSections as s}
-          {@const SIcon = s.icon}
-          <div class="side-item soon" aria-disabled="true" title="Coming in a later phase">
-            <SIcon size={15} /> {s.label}
-          </div>
-        {/each}
+        <button
+          class="side-item"
+          class:active={ui.active === 'home' && section === 'history'}
+          onclick={() => goSection('history')}
+        >
+          <History size={15} /> History
+        </button>
         <div class="side-head">Groups</div>
         {#if groupNodes().length === 0}
           <div class="side-item soon" aria-disabled="true">Set a host's Group to build the tree</div>
@@ -269,6 +264,8 @@
           <Snippets />
         {:else if section === 'forwards'}
           <PortForwards />
+        {:else if section === 'history'}
+          <HistoryView />
         {:else if section === 'settings'}
           <Settings bind:tab={settingsTab} />
         {:else}

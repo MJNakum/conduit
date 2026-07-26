@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Palette, Copy, Trash2, Check } from '@lucide/svelte'
+  import { Copy, Trash2, Check, Save } from '@lucide/svelte'
   import {
     settings,
     customSchemes,
@@ -13,9 +13,6 @@
     type AppTheme,
   } from './theme.svelte'
   import { toast } from './toast.svelte'
-
-  // `embedded` renders inline (Settings page) without the modal backdrop/Close.
-  let { onclose, embedded = false }: { onclose?: () => void; embedded?: boolean } = $props()
 
   const clone = (s: Scheme): Scheme => JSON.parse(JSON.stringify(s))
   const isBuiltin = (name: string) => BUILTINS.some((b) => b.name === name)
@@ -61,6 +58,7 @@
   function exportJson() {
     navigator.clipboard?.writeText(JSON.stringify({ ...draft, builtin: undefined }, null, 2))
     copied = true
+    toast('Scheme JSON copied')
     setTimeout(() => (copied = false), 1500)
   }
 
@@ -80,150 +78,116 @@
   const isCustom = $derived(customSchemes.list.some((s) => s.name === draft.name))
 </script>
 
-{#snippet inner()}
-    <div class="mh"><Palette size={15} /> Appearance</div>
-    <div class="mbody">
-      <!-- Global app theme -->
-      <div class="field">
-        <label>App theme</label>
-        <div class="seg">
-          {#each ['dark', 'light', 'system'] as t}
-            <button class:active={settings.appTheme === t} onclick={() => setAppTheme(t as AppTheme)}>{t}</button>
-          {/each}
-        </div>
+<div class="ap">
+  <section>
+    <h3>Theme</h3>
+    <div class="field">
+      <label>App theme</label>
+      <div class="seg">
+        {#each ['dark', 'light', 'system'] as t}
+          <button class:active={settings.appTheme === t} onclick={() => setAppTheme(t as AppTheme)}>{t}</button>
+        {/each}
       </div>
-
-      <div class="grid3">
-        <div class="field">
-          <label for="a-def">Default terminal scheme</label>
-          <select id="a-def" bind:value={settings.defaultScheme} onchange={saveDefaults}>
-            {#each allSchemes() as s (s.name)}<option value={s.name}>{s.name}</option>{/each}
-          </select>
-        </div>
-        <div class="field">
-          <label for="a-font">Default font</label>
-          <input id="a-font" class="mono" bind:value={settings.defaultFont} onchange={saveDefaults} />
-        </div>
-        <div class="field">
-          <label for="a-fs">Default size</label>
-          <input id="a-fs" class="mono" type="number" min="8" max="32" bind:value={settings.defaultFontSize} onchange={saveDefaults} />
-        </div>
-      </div>
-
-      <hr />
-
-      <!-- Scheme editor -->
+    </div>
+    <div class="grid3">
       <div class="field">
-        <label for="a-edit">Edit scheme</label>
+        <label for="a-def">Default terminal scheme</label>
+        <select id="a-def" bind:value={settings.defaultScheme} onchange={saveDefaults}>
+          {#each allSchemes() as s (s.name)}<option value={s.name}>{s.name}</option>{/each}
+        </select>
+      </div>
+      <div class="field">
+        <label for="a-font">Default font</label>
+        <input id="a-font" class="mono" bind:value={settings.defaultFont} onchange={saveDefaults} />
+      </div>
+      <div class="field">
+        <label for="a-fs">Default size</label>
+        <input id="a-fs" class="mono" type="number" min="8" max="32" bind:value={settings.defaultFontSize} onchange={saveDefaults} />
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sechead">
+      <h3>Color schemes</h3>
+      <span class="muted small">Edit a built-in (saves a custom copy) or craft your own.</span>
+    </div>
+
+    <div class="editrow">
+      <div class="field grow">
+        <label for="a-edit">Editing</label>
         <select id="a-edit" value={editName} onchange={(e) => loadEdit((e.currentTarget as HTMLSelectElement).value)}>
           {#each allSchemes() as s (s.name)}<option value={s.name}>{s.name}{s.builtin ? ' (built-in)' : ''}</option>{/each}
         </select>
       </div>
-
-      <!-- live preview -->
-      <div class="preview" style:background={draft.background} style:color={draft.foreground}>
-        <div><span style:color={draft.ansi[2]}>user@host</span>:<span style:color={draft.ansi[4]}>~/dev</span>$ echo hello</div>
-        <div>{draft.foreground} on {draft.background}</div>
-        <div class="swatches">
-          {#each draft.ansi as c}<span class="sw" style:background={c}></span>{/each}
-        </div>
+      <div class="acts">
+        {#if isCustom}<button class="btn danger" onclick={del}><Trash2 size={13} /> Delete</button>{/if}
+        <button class="btn primary" onclick={save}><Save size={13} /> Save scheme</button>
       </div>
-
-      <div class="grid3">
-        <div class="field"><label for="s-name">Name</label><input id="s-name" bind:value={draft.name} /></div>
-        <div class="field"><label>Background</label><input type="color" bind:value={draft.background} /></div>
-        <div class="field"><label>Foreground</label><input type="color" bind:value={draft.foreground} /></div>
-      </div>
-      <div class="field"><label>Cursor</label><input type="color" bind:value={draft.cursor} /></div>
-
-      <div class="field">
-        <label>ANSI palette</label>
-        <div class="ansigrid">
-          {#each draft.ansi as _, i}
-            <label class="ansi" title={ANSI[i]}>
-              <input type="color" bind:value={draft.ansi[i]} />
-              <span>{ANSI[i]}</span>
-            </label>
-          {/each}
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="s-imp">Import scheme JSON</label>
-        <textarea id="s-imp" class="mono" rows="3" bind:value={importText} placeholder={'{ "name": "...", "background": "#...", "ansi": [16] }'}></textarea>
-        <div class="row">
-          <button class="btn" onclick={importJson} disabled={!importText.trim()}>Load JSON into editor</button>
-          <button class="btn" onclick={exportJson}>{#if copied}<Check size={13} /> Copied{:else}<Copy size={13} /> Export JSON{/if}</button>
-        </div>
-      </div>
-
-      {#if err}<div class="err">{err}</div>{/if}
     </div>
-    <div class="mfoot">
-      {#if isCustom}<button class="btn danger" onclick={del}><Trash2 size={13} /> Delete</button>{/if}
-      <span style="flex:1"></span>
-      {#if !embedded}<button class="btn ghost" onclick={onclose}>Close</button>{/if}
-      <button class="btn primary" onclick={save}>Save scheme</button>
-    </div>
-{/snippet}
 
-{#if embedded}
-  <div class="embed">{@render inner()}</div>
-{:else}
-  <div class="backdrop" onclick={onclose} role="presentation">
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
-      {@render inner()}
+    <div class="preview" style:background={draft.background} style:color={draft.foreground}>
+      <div><span style:color={draft.ansi[2]}>user@host</span>:<span style:color={draft.ansi[4]}>~/dev</span>$ echo hello</div>
+      <div class="muted-fg">{draft.foreground} on {draft.background}</div>
+      <div class="swatches">
+        {#each draft.ansi as c}<span class="sw" style:background={c}></span>{/each}
+      </div>
     </div>
-  </div>
-{/if}
+
+    <div class="grid3">
+      <div class="field"><label for="s-name">Name</label><input id="s-name" bind:value={draft.name} /></div>
+      <div class="field"><label for="s-bg">Background</label><input id="s-bg" type="color" bind:value={draft.background} /></div>
+      <div class="field"><label for="s-fg">Foreground</label><input id="s-fg" type="color" bind:value={draft.foreground} /></div>
+    </div>
+    <div class="field narrow"><label for="s-cur">Cursor</label><input id="s-cur" type="color" bind:value={draft.cursor} /></div>
+
+    <div class="field">
+      <label>ANSI palette</label>
+      <div class="ansigrid">
+        {#each draft.ansi as _, i}
+          <label class="ansi" title={ANSI[i]}>
+            <input type="color" bind:value={draft.ansi[i]} />
+            <span>{ANSI[i]}</span>
+          </label>
+        {/each}
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="s-imp">Import / export</label>
+      <textarea id="s-imp" class="mono" rows="3" bind:value={importText} placeholder={'Paste scheme JSON here…  { "name": "...", "background": "#...", "ansi": [16] }'}></textarea>
+      <div class="row">
+        <button class="btn" onclick={importJson} disabled={!importText.trim()}>Load JSON into editor</button>
+        <button class="btn" onclick={exportJson}>{#if copied}<Check size={13} /> Copied{:else}<Copy size={13} /> Export current{/if}</button>
+      </div>
+    </div>
+
+    {#if err}<div class="err">{err}</div>{/if}
+  </section>
+</div>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: grid;
-    place-items: start center;
-    padding-top: 6vh;
-    z-index: 60;
-  }
-  .modal {
-    width: 600px;
-    max-width: 94vw;
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
-  }
-  .embed {
-    max-width: 640px;
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 12px;
-    overflow: hidden;
-  }
-  .mh {
+  .ap {
     display: flex;
-    align-items: center;
-    gap: 9px;
-    padding: 14px 18px;
-    border-bottom: 1px solid hsl(var(--border));
-    font-size: 14px;
-    font-weight: 600;
+    flex-direction: column;
+    gap: 26px;
+    max-width: 620px;
   }
-  .mbody {
-    padding: 16px 18px;
+  section {
     display: flex;
     flex-direction: column;
     gap: 13px;
-    max-height: 74vh;
-    overflow: auto;
   }
-  hr {
-    border: none;
-    border-top: 1px solid hsl(var(--border));
-    margin: 4px 0;
+  h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .sechead {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
   }
   .field {
     display: flex;
@@ -247,15 +211,35 @@
     font-family: inherit;
     resize: vertical;
   }
+  input:focus,
+  select:focus,
+  textarea:focus {
+    border-color: hsl(var(--ring) / 0.6);
+  }
   input[type='color'] {
     padding: 2px;
-    height: 32px;
+    height: 34px;
     cursor: pointer;
   }
   .grid3 {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 12px;
+  }
+  .narrow {
+    max-width: 200px;
+  }
+  .editrow {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+  }
+  .grow {
+    flex: 1;
+  }
+  .acts {
+    display: flex;
+    gap: 8px;
   }
   .seg {
     display: inline-flex;
@@ -287,6 +271,9 @@
     line-height: 1.6;
     border: 1px solid hsl(var(--border));
   }
+  .muted-fg {
+    opacity: 0.7;
+  }
   .swatches {
     display: flex;
     gap: 3px;
@@ -317,16 +304,12 @@
     display: flex;
     gap: 8px;
   }
+  .small {
+    font-size: 12px;
+  }
   .err {
     color: hsl(var(--destructive));
     font-size: 12.5px;
-  }
-  .mfoot {
-    padding: 13px 18px;
-    border-top: 1px solid hsl(var(--border));
-    display: flex;
-    align-items: center;
-    gap: 8px;
   }
   .btn {
     display: inline-flex;
@@ -343,9 +326,6 @@
   }
   .btn:hover {
     background: hsl(var(--border));
-  }
-  .btn.ghost {
-    background: transparent;
   }
   .btn.danger {
     color: hsl(var(--destructive));

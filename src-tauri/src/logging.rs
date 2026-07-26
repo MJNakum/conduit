@@ -34,3 +34,73 @@ pub fn open_log(app: &AppHandle, name: &str) -> Option<File> {
 pub fn logs_dir_path(app: AppHandle) -> Result<String, String> {
     Ok(logs_dir(&app)?.to_string_lossy().to_string())
 }
+
+#[derive(serde::Serialize)]
+pub struct LogEntry {
+    file: String, // bare filename, the handle passed back to read/reveal
+    host: String, // decoded from the `<host>-<unixsecs>.log` name
+    ts: u64,      // unix seconds the session started
+    size: u64,    // bytes
+}
+
+/// List saved session logs, newest first. Filenames are `<host>-<secs>.log`.
+#[tauri::command]
+pub fn logs_list(app: AppHandle) -> Result<Vec<LogEntry>, String> {
+    let dir = logs_dir(&app)?;
+    let mut out = Vec::new();
+    for entry in fs::read_dir(&dir).map_err(|e| format!("read logs dir: {e}"))? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let Some(stem) = name.strip_suffix(".log") else { continue };
+        let (host, ts) = stem
+            .rsplit_once('-')
+            .map(|(h, t)| (h.to_string(), t.parse::<u64>().unwrap_or(0)))
+            .unwrap_or((stem.to_string(), 0));
+        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        out.push(LogEntry { file: name, host, ts, size });
+    }
+    out.sort_by(|a, b| b.ts.cmp(&a.ts));
+    Ok(out)
+}
+
+// Reject anything that could escape the logs dir — we only ever open our own files.
+fn safe_in_logs(app: &AppHandle, file: &str) -> Result<PathBuf, String> {
+    if file.contains('/') || file.contains('\\') || file.contains("..") {
+        return Err("invalid log name".into());
+    }
+    Ok(logs_dir(app)?.join(file))
+}
+
+/// Read a saved log. Caps the returned text to the last 512 KB so a huge
+/// transcript can't stall the webview; prepends a notice when truncated.
+#[tauri::command]
+pub fn log_read(app: AppHandle, file: String) -> Result<String, String> {
+    const CAP: u64 = 512 * 1024;
+    let path = safe_in_logs(&app, &file)?;
+    let bytes = fs::read(&path).map_err(|e| format!("read log: {e}"))?;
+    let len = bytes.len() as u64;
+    let slice = if len > CAP { &bytes[(len - CAP) as usize..] } else { &bytes[..] };
+    let text = String::from_utf8_lossy(slice).to_string();
+    Ok(if len > CAP { format!("… (showing last 512 KB of {len} bytes)\n\n{text}") } else { text })
+}
+
+/// Reveal a log (or the logs folder when `file` is None) in Finder.
+#[tauri::command]
+pub fn log_reveal(app: AppHandle, file: Option<String>) -> Result<(), String> {
+    let target = match file {
+        Some(f) => safe_in_logs(&app, &f)?,
+        None => logs_dir(&app)?,
+    };
+    let mut cmd = std::process::Command::new("open");
+    if target.is_file() {
+        cmd.arg("-R");
+    }
+    cmd.arg(&target).spawn().map_err(|e| format!("open: {e}"))?;
+    Ok(())
+}
+
+/// Delete a saved log.
+#[tauri::command]
+pub fn log_delete(app: AppHandle, file: String) -> Result<(), String> {
+    fs::remove_file(safe_in_logs(&app, &file)?).map_err(|e| format!("delete log: {e}"))
+}

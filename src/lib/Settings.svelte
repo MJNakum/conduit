@@ -12,7 +12,7 @@
   </div>
   <div class="content">
     {#if tab === 'appearance'}
-      <Appearance embedded />
+      <Appearance />
     {:else}
       <Shortcuts />
     {/if}
