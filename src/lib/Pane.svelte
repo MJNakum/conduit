@@ -66,12 +66,15 @@
         auth: pane.host.auth,
         keyId: pane.host.keyId,
         identityFile: pane.host.identityFile,
-        secret: hasSaved ? null : secretVal,
-        save: !hasSaved && saveSecret,
+        // Only send/save a secret when we actually prompted for one. Otherwise
+        // (managed key, telnet, or an already-saved secret) leave it null so we
+        // never write a junk empty entry or re-read the keychain needlessly.
+        secret: promptSecret ? secretVal : null,
+        save: promptSecret && saveSecret,
         jumps: resolveJumps(pane.host),
         logName: pane.host.logging ? pane.host.name : null,
       })
-      if (!hasSaved && saveSecret) toast('Password saved to Keychain')
+      if (promptSecret && saveSecret) toast('Password saved to Keychain')
       secretVal = ''
     } catch (e) {
       pane.phase = 'error'
