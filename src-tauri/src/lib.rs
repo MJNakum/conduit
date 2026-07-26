@@ -1,3 +1,4 @@
+mod auth;
 mod forwards;
 mod hosts;
 mod keys;
@@ -53,7 +54,8 @@ pub fn run() {
             sftp::sftp_list,
             sftp::sftp_download,
             sftp::sftp_upload,
-            sftp::sftp_close
+            sftp::sftp_close,
+            auth::vault_authenticate
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

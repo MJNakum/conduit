@@ -15,9 +15,11 @@
     saveView,
     deleteView,
     inGroup,
+    broadcast,
     type Host,
     type View,
   } from './state.svelte'
+  import { toast } from './toast.svelte'
 
   let { onopen }: { onopen: (h: Host) => void } = $props()
 
@@ -26,7 +28,14 @@
   let editing = $state<Host | null>(null)
   let sftpHost = $state<Host | null>(null)
   let portio = $state<'import' | 'export' | null>(null)
-  let mode = $state<'comfortable' | 'compact' | 'grid'>('comfortable')
+  // View density persists across sessions (like the theme prefs).
+  let mode = $state<'comfortable' | 'compact' | 'grid'>(
+    (localStorage.getItem('ssh.hostView') as 'comfortable' | 'compact' | 'grid') || 'comfortable',
+  )
+  function setMode(m: typeof mode) {
+    mode = m
+    localStorage.setItem('ssh.hostView', m)
+  }
   let sel = $state(0)
   let searchEl = $state<HTMLInputElement>()
 
@@ -55,7 +64,10 @@
   }
   function saveCurrentView() {
     const name = prompt('Save view as:')?.trim()
-    if (name) saveView({ id: crypto.randomUUID(), name, tags: [...activeTags], search: filter })
+    if (name) {
+      saveView({ id: crypto.randomUUID(), name, tags: [...activeTags], search: filter })
+      toast(`View "${name}" saved`)
+    }
   }
 
   const filtered = $derived(store.hosts.filter(match))
@@ -100,7 +112,11 @@
   // only while the Sessions/home tab is the active surface.
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (ui.active !== 'home' || editing) return
+      if (ui.active !== 'home' || editing || broadcast.on) return
+      // Ignore typing in any field (e.g. the broadcast bar) — Enter there must
+      // not also connect the selected host in a new tab.
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') && t !== searchEl) return
       const inSearch = e.target === searchEl
       if (e.key === '/' && !inSearch) {
         e.preventDefault()
@@ -129,13 +145,13 @@
   </div>
   <div class="spacer"></div>
   <div class="seg density">
-    <button class:active={mode === 'comfortable'} title="Comfortable" aria-label="Comfortable" onclick={() => (mode = 'comfortable')}>
+    <button class:active={mode === 'comfortable'} title="Comfortable" aria-label="Comfortable" onclick={() => setMode('comfortable')}>
       <Rows3 size={14} />
     </button>
-    <button class:active={mode === 'compact'} title="Compact" aria-label="Compact" onclick={() => (mode = 'compact')}>
+    <button class:active={mode === 'compact'} title="Compact" aria-label="Compact" onclick={() => setMode('compact')}>
       <Rows4 size={14} />
     </button>
-    <button class:active={mode === 'grid'} title="Grid" aria-label="Grid" onclick={() => (mode = 'grid')}>
+    <button class:active={mode === 'grid'} title="Grid" aria-label="Grid" onclick={() => setMode('grid')}>
       <LayoutGrid size={14} />
     </button>
   </div>
@@ -155,7 +171,7 @@
     {#each viewsStore.list as v (v.id)}
       <span class="viewchip">
         <button onclick={() => applyView(v)}>{v.name}</button>
-        <button class="vx" aria-label="Delete view" onclick={() => deleteView(v.id)}><X size={11} /></button>
+        <button class="vx" aria-label="Delete view" onclick={() => { deleteView(v.id); toast('View removed') }}><X size={11} /></button>
       </span>
     {/each}
     {#each allTags as t}
@@ -239,7 +255,7 @@
       <button class="iconbtn" title="Edit" aria-label="Edit" onclick={(e) => { e.stopPropagation(); editing = { ...h } }}>
         <Pencil size={14} />
       </button>
-      <button class="iconbtn" title="Delete" aria-label="Delete" onclick={(e) => { e.stopPropagation(); deleteHost(h.id) }}>
+      <button class="iconbtn" title="Delete" aria-label="Delete" onclick={(e) => { e.stopPropagation(); deleteHost(h.id); toast(`Deleted "${h.name}"`) }}>
         <Trash2 size={14} />
       </button>
     </span>
@@ -270,7 +286,7 @@
       <button class="iconbtn" title="Edit" aria-label="Edit" onclick={(e) => { e.stopPropagation(); editing = { ...h } }}>
         <Pencil size={14} />
       </button>
-      <button class="iconbtn" title="Delete" aria-label="Delete" onclick={(e) => { e.stopPropagation(); deleteHost(h.id) }}>
+      <button class="iconbtn" title="Delete" aria-label="Delete" onclick={(e) => { e.stopPropagation(); deleteHost(h.id); toast(`Deleted "${h.name}"`) }}>
         <Trash2 size={14} />
       </button>
     </span>

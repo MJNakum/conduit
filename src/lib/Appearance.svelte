@@ -12,8 +12,10 @@
     type Scheme,
     type AppTheme,
   } from './theme.svelte'
+  import { toast } from './toast.svelte'
 
-  let { onclose }: { onclose: () => void } = $props()
+  // `embedded` renders inline (Settings page) without the modal backdrop/Close.
+  let { onclose, embedded = false }: { onclose?: () => void; embedded?: boolean } = $props()
 
   const clone = (s: Scheme): Scheme => JSON.parse(JSON.stringify(s))
   const isBuiltin = (name: string) => BUILTINS.some((b) => b.name === name)
@@ -42,6 +44,7 @@
     else customSchemes.list.push(clean)
     saveCustomSchemes()
     editName = draft.name
+    toast(`Saved scheme "${draft.name}"`)
   }
 
   function del() {
@@ -52,6 +55,7 @@
       saveDefaults()
     }
     loadEdit('Default Dark')
+    toast('Scheme deleted')
   }
 
   function exportJson() {
@@ -76,8 +80,7 @@
   const isCustom = $derived(customSchemes.list.some((s) => s.name === draft.name))
 </script>
 
-<div class="backdrop" onclick={onclose} role="presentation">
-  <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+{#snippet inner()}
     <div class="mh"><Palette size={15} /> Appearance</div>
     <div class="mbody">
       <!-- Global app theme -->
@@ -159,11 +162,20 @@
     <div class="mfoot">
       {#if isCustom}<button class="btn danger" onclick={del}><Trash2 size={13} /> Delete</button>{/if}
       <span style="flex:1"></span>
-      <button class="btn ghost" onclick={onclose}>Close</button>
+      {#if !embedded}<button class="btn ghost" onclick={onclose}>Close</button>{/if}
       <button class="btn primary" onclick={save}>Save scheme</button>
     </div>
+{/snippet}
+
+{#if embedded}
+  <div class="embed">{@render inner()}</div>
+{:else}
+  <div class="backdrop" onclick={onclose} role="presentation">
+    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+      {@render inner()}
+    </div>
   </div>
-</div>
+{/if}
 
 <style>
   .backdrop {
@@ -183,6 +195,13 @@
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  }
+  .embed {
+    max-width: 640px;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    overflow: hidden;
   }
   .mh {
     display: flex;

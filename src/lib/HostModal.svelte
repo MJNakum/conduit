@@ -2,6 +2,7 @@
   import { Pencil, Plus, X } from '@lucide/svelte'
   import { saveHost, keysStore, store, type Host } from './state.svelte'
   import { allSchemes } from './theme.svelte'
+  import { toast } from './toast.svelte'
 
   let { host, onclose }: { host: Host; onclose: () => void } = $props()
 
@@ -32,6 +33,7 @@
     draft.keyId = draft.auth === 'key' && keyChoice ? keyChoice : null
     if (draft.keyId) draft.identityFile = null
     await saveHost({ ...draft })
+    toast(`Saved "${draft.name || 'host'}"`)
     onclose()
   }
 </script>

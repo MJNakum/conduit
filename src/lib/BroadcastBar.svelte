@@ -1,18 +1,23 @@
 <script lang="ts">
   import { Radio, X } from '@lucide/svelte'
   import { broadcast, connectedSessions, broadcastTargets, broadcastLine } from './state.svelte'
+  import { toast } from './toast.svelte'
 
   let text = $state('')
   const targets = $derived(broadcastTargets())
 
   function send() {
     if (!text.trim() || targets.length === 0) return
+    const n = targets.length
     broadcastLine(text)
     text = ''
+    toast(`Sent to ${n} session${n === 1 ? '' : 's'}`)
   }
 
   function onkey(e: KeyboardEvent) {
-    if (e.key === 'Enter') { e.preventDefault(); send() }
+    // stopPropagation so the window-level host-list handler never sees this
+    // Enter and opens a new connection.
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); send() }
     else if (e.key === 'Escape') { broadcast.on = false }
   }
 

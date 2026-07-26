@@ -11,6 +11,7 @@
     runInActiveSession,
     type Snippet,
   } from './state.svelte'
+  import { toast } from './toast.svelte'
 
   let editing = $state<Snippet | null>(null)
   // Run-with-parameters state.
@@ -51,8 +52,10 @@
 
   async function save() {
     if (!editing) return
+    const name = editing.name || 'snippet'
     await saveSnippet({ ...editing })
     editing = null
+    toast(`Saved "${name}"`)
   }
 </script>
 
@@ -82,7 +85,7 @@
             <button class="icon run" title="Run in active session" onclick={() => startRun(s)}><Play size={14} /></button>
             <button class="icon" title="Copy" onclick={() => copy(s)}>{#if copiedId === s.id}<Check size={14} />{:else}<Copy size={14} />{/if}</button>
             <button class="icon" title="Edit" onclick={() => (editing = { ...s })}><Pencil size={14} /></button>
-            <button class="icon danger" title="Delete" onclick={() => deleteSnippet(s.id)}><Trash2 size={14} /></button>
+            <button class="icon danger" title="Delete" onclick={() => { deleteSnippet(s.id); toast('Snippet deleted') }}><Trash2 size={14} /></button>
           </span>
         </li>
       {/each}

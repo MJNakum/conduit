@@ -5,6 +5,7 @@
   import Stepper from './Stepper.svelte'
   import { store, ui, broadcast, hostIcon, resolveJumps, type Pane } from './state.svelte'
   import { resolveScheme, xtermTheme, settings } from './theme.svelte'
+  import { toast } from './toast.svelte'
 
   let {
     pane,
@@ -70,6 +71,7 @@
         jumps: resolveJumps(pane.host),
         logName: pane.host.logging ? pane.host.name : null,
       })
+      if (!hasSaved && saveSecret) toast('Password saved to Keychain')
       secretVal = ''
     } catch (e) {
       pane.phase = 'error'
@@ -82,6 +84,7 @@
     if (!pane.host) return
     await invoke('secret_delete', { hostId: pane.host.id })
     hasSaved = false
+    toast('Saved password removed')
   }
 
   // Answer the backend's host-key prompt. Reject makes auth fail -> Error state.

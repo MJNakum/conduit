@@ -10,6 +10,7 @@
     History,
     ChevronRight,
     Lock,
+    SlidersHorizontal,
     Plus,
     X,
   } from '@lucide/svelte'
@@ -19,10 +20,15 @@
   import KeyManager from './lib/KeyManager.svelte'
   import PortForwards from './lib/PortForwards.svelte'
   import Snippets from './lib/Snippets.svelte'
-  import Appearance from './lib/Appearance.svelte'
+  import Settings from './lib/Settings.svelte'
+  import Toaster from './lib/Toaster.svelte'
+  import LockScreen from './lib/LockScreen.svelte'
   import BroadcastBar from './lib/BroadcastBar.svelte'
   import { Radio } from '@lucide/svelte'
-  import { settings, applyAppTheme } from './lib/theme.svelte'
+  import { settings, applyAppTheme, setAppTheme, type AppTheme } from './lib/theme.svelte'
+  import { matchEvent, bindingOf, formatBinding, type ActionId } from './lib/keymap.svelte'
+  import { vault, lockVault } from './lib/vault.svelte'
+  import { toast } from './lib/toast.svelte'
   import { loadForwards, applyForwardState } from './lib/state.svelte'
   import {
     ui,
@@ -46,9 +52,9 @@
   } from './lib/state.svelte'
 
   let paletteOpen = $state(false)
-  let appearanceOpen = $state(false)
   // Which home-view section is showing (only when no terminal tab is active).
-  let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards'>('hosts')
+  let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards' | 'settings'>('hosts')
+  let settingsTab = $state<'appearance' | 'shortcuts'>('appearance')
 
   // Sidebar sections. Hosts + Keys + Snippets + Port Forwards are wired —
   // History and the Groups tree are inert placeholders for their later phases
@@ -68,19 +74,61 @@
     listen<{ id: string; state: string; message?: string }>('forward://state', (e) =>
       applyForwardState(e.payload.id, e.payload.state, e.payload.message),
     )
-    // Cmd+K toggles the command palette. Captured at window level (works over
-    // xterm too, since it fires before the terminal sees the key).
+    // Global shortcut dispatch. Bindings come from the customizable keymap;
+    // captured at window level so they work over xterm too.
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey && e.key === 'k') {
-        e.preventDefault()
-        paletteOpen = !paletteOpen
-      } else if (e.key === 'Escape' && broadcast.on) {
+      if (e.key === 'Escape' && broadcast.on) {
         broadcast.on = false
+        return
+      }
+      if (vault.locked) return // no shortcuts while locked
+      const id = matchEvent(e)
+      if (id) {
+        e.preventDefault()
+        runAction(id)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   })
+
+  // Move between the Sessions tab and the open terminal tabs by offset.
+  function switchTab(dir: 1 | -1) {
+    const keys = ['home', ...ui.tabs.map((t) => t.key)]
+    const i = keys.indexOf(ui.active)
+    activate(keys[(i + dir + keys.length) % keys.length])
+  }
+
+  function cycleTheme() {
+    const order: AppTheme[] = ['dark', 'light', 'system']
+    const next = order[(order.indexOf(settings.appTheme) + 1) % order.length]
+    setAppTheme(next)
+    toast(`Theme: ${next}`)
+  }
+
+  function goSection(s: typeof section) {
+    section = s
+    if (s === 'hosts') ui.group = null
+    activate('home')
+  }
+
+  function runAction(id: ActionId) {
+    switch (id) {
+      case 'palette': paletteOpen = !paletteOpen; break
+      case 'settings': case 'gotoSettings': goSection('settings'); break
+      case 'cycleTheme': cycleTheme(); break
+      case 'newTab': activate('home'); break
+      case 'closeTab': if (ui.active !== 'home') closeTab(ui.active); break
+      case 'nextTab': switchTab(1); break
+      case 'prevTab': switchTab(-1); break
+      case 'lockVault': lockVault(); break
+      case 'broadcast': if (connectedSessions().length) broadcast.on = !broadcast.on; break
+      case 'gotoHosts': goSection('hosts'); break
+      case 'gotoKeys': goSection('keys'); break
+      case 'gotoSnippets': goSection('snippets'); break
+      case 'gotoForwards': goSection('forwards'); break
+    }
+  }
 
   async function open(h: Host) {
     openTab(h)
@@ -177,6 +225,13 @@
         >
           <ArrowRightLeft size={15} /> Port Forwards
         </button>
+        <button
+          class="side-item"
+          class:active={ui.active === 'home' && section === 'settings'}
+          onclick={() => goSection('settings')}
+        >
+          <SlidersHorizontal size={15} /> Settings
+        </button>
         {#each laterSections as s}
           {@const SIcon = s.icon}
           <div class="side-item soon" aria-disabled="true" title="Coming in a later phase">
@@ -199,10 +254,10 @@
           {/each}
         {/if}
       </div>
-      <div class="vault">
+      <button class="vault" onclick={lockVault} title="Lock the vault">
         <Lock size={14} color="hsl(var(--primary))" /> Vault unlocked
-        <span class="mono kbd">⌘L</span>
-      </div>
+        <span class="mono kbd">{formatBinding(bindingOf('lockVault'))}</span>
+      </button>
     </aside>
 
     <!-- MAIN -->
@@ -214,6 +269,8 @@
           <Snippets />
         {:else if section === 'forwards'}
           <PortForwards />
+        {:else if section === 'settings'}
+          <Settings bind:tab={settingsTab} />
         {:else}
           <HostList onopen={open} />
         {/if}
@@ -238,18 +295,19 @@
       <Radio size={12} /> Broadcast
     </button>
     <span>·</span>
-    <button class="themebtn" onclick={() => (appearanceOpen = true)}>Theme: {settings.appTheme}</button>
+    <button class="themebtn" onclick={() => { settingsTab = 'appearance'; goSection('settings') }}>Theme: {settings.appTheme}</button>
     <span>·</span>
-    <span class="mono">⌘K</span>
+    <span class="mono">{formatBinding(bindingOf('palette'))}</span>
     <span>command palette</span>
   </footer>
 
   {#if paletteOpen}
     <Palette onclose={() => (paletteOpen = false)} />
   {/if}
-  {#if appearanceOpen}
-    <Appearance onclose={() => (appearanceOpen = false)} />
+  {#if vault.locked}
+    <LockScreen />
   {/if}
+  <Toaster />
 </main>
 
 <style>
@@ -406,10 +464,19 @@
     padding: 8px 10px;
     border-radius: 8px;
     background: hsl(var(--muted));
+    border: none;
+    width: calc(100% - 16px);
+    color: inherit;
+    font-family: inherit;
     display: flex;
     align-items: center;
     gap: 9px;
     font-size: 12px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .vault:hover {
+    background: hsl(var(--border));
   }
   .kbd {
     margin-left: auto;

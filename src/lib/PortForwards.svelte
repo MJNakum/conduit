@@ -10,6 +10,7 @@
     stopForward,
     type Forward,
   } from './state.svelte'
+  import { toast } from './toast.svelte'
 
   let editing = $state<Forward | null>(null)
 
@@ -40,8 +41,10 @@
 
   async function save() {
     if (!editing) return
+    const name = editing.name || 'forward'
     await saveForward({ ...editing })
     editing = null
+    toast(`Saved "${name}"`)
   }
 
   const kindHelp: Record<string, string> = {
@@ -77,7 +80,7 @@
             <span class="track"></span>
           </label>
           <button class="icon" title="Edit" onclick={() => (editing = { ...f })}><Pencil size={14} /></button>
-          <button class="icon danger" title="Delete" onclick={() => deleteForward(f.id)}><Trash2 size={14} /></button>
+          <button class="icon danger" title="Delete" onclick={() => { deleteForward(f.id); toast('Forward deleted') }}><Trash2 size={14} /></button>
         </li>
       {/each}
     </ul>
