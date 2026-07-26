@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { Database, Globe, Rocket, FlaskConical, Laptop, Server, type Icon } from '@lucide/svelte'
+import { phaseStep, type Step, type LogLine } from './connsteps'
 
 export type Host = {
   id: string
@@ -321,6 +322,8 @@ export type Pane = {
   phase: string // real ssh://state: '' | connecting | hostkey | authenticating | connected | disconnected | error
   error: string
   method: string // auth method for the current 'authenticating' phase
+  connLog: LogLine[] // detailed per-step connection log (accordion), current attempt
+  activeStep: Step // step the connection is currently in (drives failed-step marking)
   // Host-key prompt payload (phase === 'hostkey'):
   keyHost: string // the machine being verified (a bastion mid-chain isn't the tab host)
   fingerprint: string
@@ -347,6 +350,8 @@ function newPane(host: Host | null): Pane {
     phase: '',
     error: '',
     method: '',
+    connLog: [],
+    activeStep: 'connecting',
     keyHost: '',
     fingerprint: '',
     keyType: '',
@@ -435,8 +440,18 @@ export function applyState(p: StatePayload) {
   for (const tab of ui.tabs) {
     const pane = tab.panes.find((x) => x.sessionId === p.id)
     if (!pane) continue
+    // A fresh 'connecting' begins a new attempt — clear the previous log.
+    if (p.state === 'connecting') {
+      pane.connLog = []
+      pane.activeStep = 'connecting'
+    }
     pane.phase = p.state
     pane.error = p.state === 'error' ? (p.message ?? 'error') : ''
+    // On error, record the failure under whatever step is active so the
+    // accordion shows it inline; activeStep stays put (that's the failed step).
+    if (p.state === 'error') pane.connLog.push({ step: pane.activeStep, ts: Date.now(), msg: pane.error })
+    const s = phaseStep(p.state)
+    if (s) pane.activeStep = s
     if (p.state === 'authenticating') pane.method = p.method ?? ''
     if (p.state === 'hostkey') {
       pane.keyHost = p.host ?? ''
@@ -445,6 +460,20 @@ export function applyState(p: StatePayload) {
       pane.keyChanged = !!p.changed
       pane.oldFingerprint = p.old ?? ''
     }
+    return
+  }
+}
+
+// The ssh://log event payload — one detailed line, bucketed by step.
+export type LogPayload = { id: string; step: Step; msg: string }
+
+// Route a detailed connection-log line to its pane and advance the step pointer.
+export function applyLog(p: LogPayload) {
+  for (const tab of ui.tabs) {
+    const pane = tab.panes.find((x) => x.sessionId === p.id)
+    if (!pane) continue
+    pane.connLog.push({ step: p.step, ts: Date.now(), msg: p.msg })
+    pane.activeStep = p.step
     return
   }
 }

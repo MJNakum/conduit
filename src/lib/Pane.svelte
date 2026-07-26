@@ -47,6 +47,8 @@
     if (!pane.host) return
     pane.error = ''
     pane.phase = 'connecting'
+    pane.connLog = []
+    pane.activeStep = 'connecting'
     try {
       if (isTelnet) {
         pane.sessionId = await invoke<string>('telnet_connect', {
@@ -75,6 +77,13 @@
     }
   }
 
+  // Drop the saved secret so the next connect prompts again.
+  async function forgetSecret() {
+    if (!pane.host) return
+    await invoke('secret_delete', { hostId: pane.host.id })
+    hasSaved = false
+  }
+
   // Answer the backend's host-key prompt. Reject makes auth fail -> Error state.
   function hostKeyDecision(accept: boolean) {
     if (!pane.sessionId) return
@@ -87,6 +96,8 @@
     pane.sessionId = null
     pane.phase = ''
     pane.error = ''
+    pane.connLog = []
+    pane.activeStep = 'connecting'
   }
 
   // Reuse the backend-retained credentials to restart the same session id.
@@ -94,6 +105,8 @@
     if (!pane.sessionId) return
     pane.error = ''
     pane.phase = 'connecting'
+    pane.connLog = []
+    pane.activeStep = 'connecting'
     invoke('ssh_reconnect', { id: pane.sessionId })
   }
 
@@ -142,7 +155,12 @@
       <p class="muted mono">{pane.host.user}@{pane.host.hostname}:{pane.host.port}</p>
       <form onsubmit={(e) => { e.preventDefault(); connect() }}>
         {#if !promptSecret}
-          <p class="muted small">{isTelnet ? 'Telnet — no authentication.' : managedKey ? 'Authenticating with a managed key.' : 'Using saved secret from Keychain.'}</p>
+          <p class="muted small">
+            {isTelnet ? 'Telnet — no authentication.' : managedKey ? 'Authenticating with a managed key.' : 'Using saved secret from Keychain.'}
+            {#if hasSaved}
+              <button type="button" class="linkbtn" onclick={forgetSecret}>Forget</button>
+            {/if}
+          </p>
         {:else}
           <!-- svelte-ignore a11y_autofocus -->
           <input
@@ -198,7 +216,14 @@
             </div>
           {:else}
             <h3>{#if Icon}<Icon size={18} />{/if} {pane.host.name}</h3>
-            <Stepper phase={pane.phase} error={pane.error} method={pane.method} />
+            <Stepper
+              phase={pane.phase}
+              error={pane.error}
+              method={pane.method}
+              protocol={pane.host.protocol ?? 'ssh'}
+              log={pane.connLog}
+              activeStep={pane.activeStep}
+            />
             {#if pane.phase === 'disconnected'}
               <button class="btn primary" onclick={reconnect}>Reconnect</button>
             {:else if pane.phase === 'error'}
@@ -350,6 +375,16 @@
   .save input {
     width: auto;
     padding: 0;
+  }
+  .linkbtn {
+    background: none;
+    border: 0;
+    padding: 0;
+    margin-left: 6px;
+    font: inherit;
+    color: hsl(var(--primary));
+    cursor: pointer;
+    text-decoration: underline;
   }
   .hostkey {
     width: 420px;

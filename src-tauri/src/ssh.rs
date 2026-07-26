@@ -125,6 +125,24 @@ struct DataEvent {
     bytes: Vec<u8>,
 }
 
+/// A single detailed line for the connection-step accordion, emitted on
+/// `ssh://log`. `step` buckets the line under one of the UI's fixed steps:
+/// "connecting" | "hostkey" | "auth" | "shell". No timestamp — the webview
+/// stamps arrival (IPC-local, negligible skew).
+#[derive(Serialize, Clone)]
+struct LogEvent {
+    id: String,
+    step: &'static str,
+    msg: String,
+}
+
+fn emit_log(app: &AppHandle, id: &str, step: &'static str, msg: impl Into<String>) {
+    let _ = app.emit(
+        "ssh://log",
+        LogEvent { id: id.to_string(), step, msg: msg.into() },
+    );
+}
+
 fn emit_state(app: &AppHandle, id: &str, state: ConnState) {
     let _ = app.emit(
         "ssh://state",
@@ -175,9 +193,11 @@ impl client::Handler for Handler {
         let fingerprint = server_public_key.fingerprint(HashAlg::Sha256).to_string();
         let key_type = server_public_key.algorithm().to_string();
 
+        emit_log(&self.app, &self.id, "hostkey", format!("{fingerprint} ({key_type})"));
         let existing = crate::knownhosts::lookup(&self.app, &self.host, self.port);
         if let Some(k) = &existing {
             if k.fingerprint == fingerprint {
+                emit_log(&self.app, &self.id, "hostkey", "known host, matched");
                 return Ok(true); // known and unchanged
             }
         }
@@ -185,8 +205,15 @@ impl client::Handler for Handler {
         // Non-interactive (forwards): never block on a UI prompt — reject an
         // untrusted key. The user connects the host once to establish trust.
         if !self.interactive {
+            emit_log(&self.app, &self.id, "hostkey", "untrusted key, rejected (non-interactive)");
             return Ok(false);
         }
+        emit_log(
+            &self.app,
+            &self.id,
+            "hostkey",
+            if existing.is_some() { "key CHANGED, awaiting confirmation" } else { "unknown key, awaiting confirmation" },
+        );
 
         // Unknown or changed: park a decision channel, emit the prompt, wait.
         let (tx, rx) = oneshot::channel::<bool>();
@@ -204,6 +231,7 @@ impl client::Handler for Handler {
         );
         // ponytail: no timeout — closing the tab drops the session to abort.
         let accepted = rx.await.unwrap_or(false);
+        emit_log(&self.app, &self.id, "hostkey", if accepted { "accepted" } else { "rejected" });
         if accepted {
             let _ = crate::knownhosts::upsert(
                 &self.app,
@@ -450,9 +478,10 @@ pub(crate) async fn connect_chain(
         forward_target: fwd,
     };
     let emit_auth = |hop: &Hop| {
+        let method = if hop.auth == "key" { "publickey" } else { "password" };
         if interactive {
-            let method = if hop.auth == "key" { "publickey" } else { "password" };
             emit_state(app, id, ConnState::Authenticating { method: method.into() });
+            emit_log(app, id, "auth", format!("authenticate {}@{} ({method})", hop.user, hop.host));
         }
     };
 
@@ -460,14 +489,20 @@ pub(crate) async fn connect_chain(
     // via a direct-tcpip channel. Only the last (target) hop carries forward_target.
     let first = &chain[0];
     let fwd0 = if n == 1 { forward_target.clone() } else { None };
+    emit_log(app, id, "connecting", format!("TCP connect {}:{}", first.host, first.port));
     let mut handle = client::connect(config.clone(), (first.host.as_str(), first.port), mk(first, fwd0))
         .await
         .map_err(|e| format!("connect failed: {e}"))?;
+    emit_log(app, id, "connecting", "transport established");
     emit_auth(first);
     authenticate(&mut handle, first).await?;
+    if interactive {
+        emit_log(app, id, "auth", "authenticated");
+    }
 
     let mut bastions: Vec<client::Handle<Handler>> = Vec::new();
     for (i, hop) in chain.iter().enumerate().skip(1) {
+        emit_log(app, id, "connecting", format!("via {} -> {}:{}", chain[i - 1].host, hop.host, hop.port));
         let channel = handle
             .channel_open_direct_tcpip(hop.host.clone(), hop.port as u32, "127.0.0.1", 0)
             .await
@@ -477,8 +512,12 @@ pub(crate) async fn connect_chain(
         handle = client::connect_stream(config.clone(), channel.into_stream(), mk(hop, fwd))
             .await
             .map_err(|e| format!("connect via jump to {}: {e}", hop.host))?;
+        emit_log(app, id, "connecting", "transport established");
         emit_auth(hop);
         authenticate(&mut handle, hop).await?;
+        if interactive {
+            emit_log(app, id, "auth", "authenticated");
+        }
     }
     Ok((handle, bastions))
 }
@@ -519,21 +558,25 @@ async fn run_session(
     let (handle, _bastions) =
         connect_chain(app, id, &chain, pending, true, None, false).await?;
 
+    emit_log(app, id, "shell", "open session channel");
     let mut channel = handle
         .channel_open_session()
         .await
         .map_err(|e| format!("channel open failed: {e}"))?;
 
     // Default PTY size; the frontend sends a real size right after connecting.
+    emit_log(app, id, "shell", "request pty xterm-256color");
     channel
         .request_pty(false, "xterm-256color", 80, 24, 0, 0, &[])
         .await
         .map_err(|e| format!("pty request failed: {e}"))?;
+    emit_log(app, id, "shell", "request shell");
     channel
         .request_shell(false)
         .await
         .map_err(|e| format!("shell request failed: {e}"))?;
 
+    emit_log(app, id, "shell", "session ready");
     emit_state(app, id, ConnState::Connected);
 
     // Single loop reads from the server and writes webview input, avoiding a

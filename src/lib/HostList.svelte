@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { Search, Plus, Star, Pencil, Trash2, Rows3, Rows4, Upload, Download, X, FolderOpen } from '@lucide/svelte'
+  import { Search, Plus, Star, Pencil, Trash2, Rows3, Rows4, LayoutGrid, Upload, Download, X, FolderOpen } from '@lucide/svelte'
   import HostModal from './HostModal.svelte'
   import ImportExport from './ImportExport.svelte'
   import Sftp from './Sftp.svelte'
@@ -26,7 +26,7 @@
   let editing = $state<Host | null>(null)
   let sftpHost = $state<Host | null>(null)
   let portio = $state<'import' | 'export' | null>(null)
-  let dense = $state(false)
+  let mode = $state<'comfortable' | 'compact' | 'grid'>('comfortable')
   let sel = $state(0)
   let searchEl = $state<HTMLInputElement>()
 
@@ -129,11 +129,14 @@
   </div>
   <div class="spacer"></div>
   <div class="seg density">
-    <button class:active={!dense} title="Comfortable" aria-label="Comfortable" onclick={() => (dense = false)}>
+    <button class:active={mode === 'comfortable'} title="Comfortable" aria-label="Comfortable" onclick={() => (mode = 'comfortable')}>
       <Rows3 size={14} />
     </button>
-    <button class:active={dense} title="Compact" aria-label="Compact" onclick={() => (dense = true)}>
+    <button class:active={mode === 'compact'} title="Compact" aria-label="Compact" onclick={() => (mode = 'compact')}>
       <Rows4 size={14} />
+    </button>
+    <button class:active={mode === 'grid'} title="Grid" aria-label="Grid" onclick={() => (mode = 'grid')}>
+      <LayoutGrid size={14} />
     </button>
   </div>
   <button class="btn" title="Import from ssh_config" onclick={() => (portio = 'import')}>
@@ -176,7 +179,7 @@
   </div>
 {/if}
 
-<div class="listscroll" class:dense>
+<div class="listscroll" class:dense={mode === 'compact'} class:gridmode={mode === 'grid'}>
   {#if visible.length === 0}
     <div class="empty">
       <h2>No hosts yet</h2>
@@ -186,18 +189,62 @@
   {:else}
     {#if !q && favorites.length}
       <div class="cluster-h"><Star size={12} color="hsl(var(--amber))" /> Favorites</div>
-      {#each favorites as h (h.id)}
-        {@render row(h, visible.indexOf(h))}
-      {/each}
+      <div class="items">
+        {#each favorites as h (h.id)}
+          {@render item(h, visible.indexOf(h))}
+        {/each}
+      </div>
     {/if}
     {#if rest.length}
       <div class="cluster-h">{q ? `${filtered.length} match${filtered.length === 1 ? '' : 'es'}` : `All Hosts · ${store.hosts.length}`}</div>
-      {#each rest as h (h.id)}
-        {@render row(h, visible.indexOf(h))}
-      {/each}
+      <div class="items">
+        {#each rest as h (h.id)}
+          {@render item(h, visible.indexOf(h))}
+        {/each}
+      </div>
     {/if}
   {/if}
 </div>
+
+{#snippet item(h: Host, i: number)}
+  {#if mode === 'grid'}{@render card(h, i)}{:else}{@render row(h, i)}{/if}
+{/snippet}
+
+{#snippet card(h: Host, i: number)}
+  {@const Icon = hostIcon(h)}
+  <div
+    class="card"
+    class:sel={i === sel}
+    role="button"
+    tabindex="-1"
+    onclick={() => onopen(h)}
+    onmouseenter={() => (sel = i)}
+    onkeydown={(e) => { if (e.key === 'Enter') onopen(h) }}
+  >
+    {#if h.color}<span class="rail" style:background={h.color}></span>{/if}
+    <div class="chead">
+      <span class="hico" style:color={h.color ?? undefined}><Icon size={16} /></span>
+      <span class="name">{h.name}</span>
+      <span class="spacer"></span>
+      {#if h.favorite}<span class="star"><Star size={13} /></span>{/if}
+    </div>
+    <div class="addr muted mono">{h.user}@{h.hostname}:{h.port}</div>
+    <div class="ctags">
+      {#each h.tags as t}<span class="chip tag">{t}</span>{/each}
+    </div>
+    <span class="actions">
+      <button class="iconbtn" title="SFTP" aria-label="SFTP" onclick={(e) => { e.stopPropagation(); sftpHost = h }}>
+        <FolderOpen size={14} />
+      </button>
+      <button class="iconbtn" title="Edit" aria-label="Edit" onclick={(e) => { e.stopPropagation(); editing = { ...h } }}>
+        <Pencil size={14} />
+      </button>
+      <button class="iconbtn" title="Delete" aria-label="Delete" onclick={(e) => { e.stopPropagation(); deleteHost(h.id) }}>
+        <Trash2 size={14} />
+      </button>
+    </span>
+  </div>
+{/snippet}
 
 {#snippet row(h: Host, i: number)}
   {@const Icon = hostIcon(h)}
@@ -439,6 +486,61 @@
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: hsl(var(--muted-foreground));
+  }
+  /* In row modes the wrapper is inert; in grid mode it lays the cards out. */
+  .items {
+    display: contents;
+  }
+  .gridmode .items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 8px;
+    padding: 4px 16px 8px;
+  }
+  .card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 11px 12px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 9px;
+    background: hsl(var(--card));
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .card:hover {
+    background: hsl(var(--muted));
+  }
+  .card.sel {
+    border-color: hsl(var(--primary) / 0.6);
+    background: hsl(var(--primary) / 0.09);
+  }
+  .chead {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .ctags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-height: 19px;
+  }
+  /* Always laid out, only toggled visible — keeps card height stable on hover. */
+  .card .actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 2px;
+    visibility: hidden;
+  }
+  .card:hover .actions,
+  .card.sel .actions {
+    visibility: visible;
+  }
+  .card .rail {
+    top: 0;
+    bottom: 0;
   }
   .row {
     display: flex;

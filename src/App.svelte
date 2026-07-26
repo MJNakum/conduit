@@ -34,6 +34,7 @@
     openTab,
     closeTab,
     applyState,
+    applyLog,
     activeCount,
     hostIcon,
     tabHost,
@@ -41,6 +42,7 @@
     type Host,
     type Tab,
     type StatePayload,
+    type LogPayload,
   } from './lib/state.svelte'
 
   let paletteOpen = $state(false)
@@ -62,6 +64,7 @@
     loadForwards()
     loadSnippets()
     listen<StatePayload>('ssh://state', (e) => applyState(e.payload))
+    listen<LogPayload>('ssh://log', (e) => applyLog(e.payload))
     listen<{ id: string; state: string; message?: string }>('forward://state', (e) =>
       applyForwardState(e.payload.id, e.payload.state, e.payload.message),
     )
