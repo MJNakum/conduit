@@ -49,23 +49,24 @@ pub async fn vault_authenticate(
     window: tauri::WebviewWindow,
     reason: String,
 ) -> Result<bool, String> {
-    use windows::core::{Interface, HSTRING};
+    use windows::core::{factory, HSTRING};
     use windows::Security::Credentials::UI::{
         UserConsentVerificationResult, UserConsentVerifier,
     };
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::WinRT::IUserConsentVerifierInterop;
 
-    // Reconstruct HWND from the raw pointer so a windows-crate version skew with
-    // Tauri's own dependency can't cause a type mismatch.
-    let raw = window.hwnd().map_err(|e| e.to_string())?;
-    let hwnd = HWND(raw.0 as _);
+    // Capture the window handle as a raw isize: HWND wraps a raw pointer and is
+    // not Send, so we rebuild it inside the blocking task rather than moving it.
+    let hwnd_raw = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
     let message = HSTRING::from(reason);
 
     // The async result arrives off-thread; block a pooled thread so the async
     // command resolves when it fires (mirrors the macOS path).
     tokio::task::spawn_blocking(move || -> Result<bool, String> {
-        let interop = UserConsentVerifier::factory::<IUserConsentVerifierInterop>()
+        let hwnd = HWND(hwnd_raw as *mut _);
+        // The interop factory is a free function in windows 0.61, not a method.
+        let interop = factory::<UserConsentVerifier, IUserConsentVerifierInterop>()
             .map_err(|e| e.to_string())?;
         let op = unsafe {
             interop.RequestVerificationForWindowAsync(hwnd, &message)
