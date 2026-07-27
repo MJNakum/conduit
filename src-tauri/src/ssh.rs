@@ -643,7 +643,7 @@ pub fn ssh_resize(
 pub(crate) fn expand_tilde(path: &str) -> String {
     if let Some(rest) = path.strip_prefix("~/") {
         if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-            return format!("{home}/{rest}");
+            return std::path::Path::new(&home).join(rest).to_string_lossy().into_owned();
         }
     }
     path.to_string()
@@ -685,6 +685,6 @@ mod tests {
         // Windows has no HOME; USERPROFILE is the home dir and is used as fallback.
         std::env::remove_var("HOME");
         std::env::set_var("USERPROFILE", "C:\\Users\\x");
-        assert_eq!(expand_tilde("~/.ssh/config"), "C:\\Users\\x/.ssh/config");
+        assert_eq!(expand_tilde("~/.ssh/config"), "C:\\Users\\x\\.ssh\\config");
     }
 }
