@@ -6,6 +6,7 @@
   import { X, ChevronUp, ChevronDown } from '@lucide/svelte'
   import { invoke } from '@tauri-apps/api/core'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+  import { matchEvent, isPrintableChord } from './keymap.svelte'
   import '@xterm/xterm/css/xterm.css'
 
   // The session id returned by ssh_connect; scopes every event to this pane.
@@ -43,10 +44,16 @@
     // Cmd+F toggles this terminal's search bar. Intercepting via xterm's key
     // handler scopes it to the focused terminal (each pane has its own).
     term.attachCustomKeyEventHandler((e) => {
-      if (e.type === 'keydown' && e.metaKey && e.key === 'f') {
+      if (e.type !== 'keydown') return true
+      if (e.metaKey && e.key === 'f') {
         openSearch()
         return false
       }
+      // Let bound app shortcuts (F6, Cmd chords, etc.) and region-nav keys
+      // escape the terminal — return false so xterm doesn't also send them to
+      // the shell; the window-level dispatcher then runs the action. Printable
+      // chords (e.g. `?`) are never stolen: they must type into the shell.
+      if (matchEvent(e) && !isPrintableChord(e)) return false
       return true
     })
 

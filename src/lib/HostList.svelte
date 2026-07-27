@@ -20,6 +20,8 @@
     type View,
   } from './state.svelte'
   import { toast } from './toast.svelte'
+  import { roving } from './actions/roving'
+  import { promptDialog } from './dialog.svelte'
 
   let { onopen }: { onopen: (h: Host) => void } = $props()
 
@@ -36,7 +38,6 @@
     mode = m
     localStorage.setItem('ssh.hostView', m)
   }
-  let sel = $state(0)
   let searchEl = $state<HTMLInputElement>()
 
   const q = $derived(filter.toLowerCase().trim())
@@ -62,8 +63,8 @@
     filter = v.search
     activeTags = [...v.tags]
   }
-  function saveCurrentView() {
-    const name = prompt('Save view as:')?.trim()
+  async function saveCurrentView() {
+    const name = (await promptDialog({ title: 'Save view as', placeholder: 'View name' }))?.trim()
     if (name) {
       saveView({ id: crypto.randomUUID(), name, tags: [...activeTags], search: filter })
       toast(`View "${name}" saved`)
@@ -103,33 +104,16 @@
     tick().then(() => window.dispatchEvent(new Event('resize')))
   }
 
-  // Keep selection in range as the list changes.
-  $effect(() => {
-    if (sel >= visible.length) sel = Math.max(0, visible.length - 1)
-  })
-
-  // Keyboard: '/' focuses search, arrows move selection, Enter connects — but
-  // only while the Sessions/home tab is the active surface.
+  // Roving arrow-nav lives on the list container; Enter/click opens. This handler
+  // only adds the '/' quick-focus for search, and only on the home surface.
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
       if (ui.active !== 'home' || editing || broadcast.on) return
-      // Ignore typing in any field (e.g. the broadcast bar) — Enter there must
-      // not also connect the selected host in a new tab.
       const t = e.target as HTMLElement | null
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') && t !== searchEl) return
-      const inSearch = e.target === searchEl
-      if (e.key === '/' && !inSearch) {
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return
+      if (e.key === '/') {
         e.preventDefault()
         searchEl?.focus()
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        sel = Math.min(sel + 1, visible.length - 1)
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        sel = Math.max(sel - 1, 0)
-      } else if (e.key === 'Enter' && visible[sel]) {
-        e.preventDefault()
-        onopen(visible[sel])
       }
     }
     window.addEventListener('keydown', onKey)
@@ -195,7 +179,14 @@
   </div>
 {/if}
 
-<div class="listscroll" class:dense={mode === 'compact'} class:gridmode={mode === 'grid'}>
+<div
+  class="listscroll"
+  class:dense={mode === 'compact'}
+  class:gridmode={mode === 'grid'}
+  role="group"
+  aria-label="Hosts"
+  use:roving={{ orientation: mode === 'grid' ? 'grid' : 'vertical' }}
+>
   {#if visible.length === 0}
     <div class="empty">
       <h2>No hosts yet</h2>
@@ -226,16 +217,16 @@
   {#if mode === 'grid'}{@render card(h, i)}{:else}{@render row(h, i)}{/if}
 {/snippet}
 
-{#snippet card(h: Host, i: number)}
+{#snippet card(h: Host, _i: number)}
   {@const Icon = hostIcon(h)}
   <div
     class="card"
-    class:sel={i === sel}
     role="button"
     tabindex="-1"
+    data-roving-item
+    aria-label={`Connect to ${h.name}`}
     onclick={() => onopen(h)}
-    onmouseenter={() => (sel = i)}
-    onkeydown={(e) => { if (e.key === 'Enter') onopen(h) }}
+    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onopen(h) } }}
   >
     {#if h.color}<span class="rail" style:background={h.color}></span>{/if}
     <div class="chead">
@@ -249,29 +240,29 @@
       {#each h.tags as t}<span class="chip tag">{t}</span>{/each}
     </div>
     <span class="actions">
-      <button class="iconbtn" title="SFTP" aria-label="SFTP" onclick={(e) => { e.stopPropagation(); sftpHost = h }}>
+      <button class="iconbtn" data-roving-action title="SFTP" aria-label={`SFTP to ${h.name}`} onclick={(e) => { e.stopPropagation(); sftpHost = h }}>
         <FolderOpen size={14} />
       </button>
-      <button class="iconbtn" title="Edit" aria-label="Edit" onclick={(e) => { e.stopPropagation(); editing = { ...h } }}>
+      <button class="iconbtn" data-roving-action title="Edit" aria-label={`Edit ${h.name}`} onclick={(e) => { e.stopPropagation(); editing = { ...h } }}>
         <Pencil size={14} />
       </button>
-      <button class="iconbtn" title="Delete" aria-label="Delete" onclick={(e) => { e.stopPropagation(); deleteHost(h.id); toast(`Deleted "${h.name}"`) }}>
+      <button class="iconbtn" data-roving-action title="Delete" aria-label={`Delete ${h.name}`} onclick={(e) => { e.stopPropagation(); deleteHost(h.id); toast(`Deleted "${h.name}"`) }}>
         <Trash2 size={14} />
       </button>
     </span>
   </div>
 {/snippet}
 
-{#snippet row(h: Host, i: number)}
+{#snippet row(h: Host, _i: number)}
   {@const Icon = hostIcon(h)}
   <div
     class="row"
-    class:sel={i === sel}
     role="button"
     tabindex="-1"
+    data-roving-item
+    aria-label={`Connect to ${h.name}`}
     onclick={() => onopen(h)}
-    onmouseenter={() => (sel = i)}
-    onkeydown={(e) => { if (e.key === 'Enter') onopen(h) }}
+    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onopen(h) } }}
   >
     {#if h.color}<span class="rail" style:background={h.color}></span>{/if}
     <span class="hico" style:color={h.color ?? undefined}><Icon size={16} /></span>
@@ -280,13 +271,13 @@
     {#each h.tags as t}<span class="chip tag">{t}</span>{/each}
     <span class="spacer"></span>
     <span class="actions">
-      <button class="iconbtn" title="SFTP" aria-label="SFTP" onclick={(e) => { e.stopPropagation(); sftpHost = h }}>
+      <button class="iconbtn" data-roving-action title="SFTP" aria-label={`SFTP to ${h.name}`} onclick={(e) => { e.stopPropagation(); sftpHost = h }}>
         <FolderOpen size={14} />
       </button>
-      <button class="iconbtn" title="Edit" aria-label="Edit" onclick={(e) => { e.stopPropagation(); editing = { ...h } }}>
+      <button class="iconbtn" data-roving-action title="Edit" aria-label={`Edit ${h.name}`} onclick={(e) => { e.stopPropagation(); editing = { ...h } }}>
         <Pencil size={14} />
       </button>
-      <button class="iconbtn" title="Delete" aria-label="Delete" onclick={(e) => { e.stopPropagation(); deleteHost(h.id); toast(`Deleted "${h.name}"`) }}>
+      <button class="iconbtn" data-roving-action title="Delete" aria-label={`Delete ${h.name}`} onclick={(e) => { e.stopPropagation(); deleteHost(h.id); toast(`Deleted "${h.name}"`) }}>
         <Trash2 size={14} />
       </button>
     </span>
@@ -528,9 +519,10 @@
   .card:hover {
     background: hsl(var(--muted));
   }
-  .card.sel {
+  .card:focus-visible {
     border-color: hsl(var(--primary) / 0.6);
     background: hsl(var(--primary) / 0.09);
+    outline: none;
   }
   .chead {
     display: flex;
@@ -551,7 +543,7 @@
     visibility: hidden;
   }
   .card:hover .actions,
-  .card.sel .actions {
+  .card:focus-within .actions {
     visibility: visible;
   }
   .card .rail {
@@ -573,9 +565,10 @@
   .row:hover {
     background: hsl(var(--muted));
   }
-  .row.sel {
+  .row:focus-visible {
     background: hsl(var(--primary) / 0.09);
     box-shadow: inset 2px 0 0 hsl(var(--primary));
+    outline: none;
   }
   /* host accent color — a subtle identity rail, distinct from the selection */
   .rail {
@@ -615,7 +608,8 @@
     align-items: center;
     gap: 1px;
   }
-  .row:hover .actions {
+  .row:hover .actions,
+  .row:focus-within .actions {
     display: flex;
   }
   .iconbtn {

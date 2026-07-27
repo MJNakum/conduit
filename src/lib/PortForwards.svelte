@@ -11,6 +11,7 @@
     type Forward,
   } from './state.svelte'
   import { toast } from './toast.svelte'
+  import { trapFocus } from './actions/trapFocus'
 
   let editing = $state<Forward | null>(null)
 
@@ -89,7 +90,7 @@
 
 {#if editing}
   <div class="backdrop" onclick={() => (editing = null)} role="presentation">
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-modal="true" use:trapFocus={{ onclose: () => (editing = null) }}>
       <div class="mh"><ArrowRightLeft size={15} /> {editing.name ? 'Edit forward' : 'New forward'}</div>
       <div class="mbody">
         <div class="grid2">

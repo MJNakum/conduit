@@ -3,7 +3,7 @@
 // handlers (they need app state) and dispatches via matchEvent(); the Settings
 // panel edits bindings via set/reset. 'mod' = Cmd on macOS.
 import { eventToBinding, formatBinding } from './keys'
-export { eventToBinding, formatBinding } from './keys'
+export { eventToBinding, formatBinding, isPrintableChord } from './keys'
 
 export type ActionId =
   | 'palette'
@@ -20,6 +20,11 @@ export type ActionId =
   | 'gotoSnippets'
   | 'gotoForwards'
   | 'gotoSettings'
+  | 'gotoHistory'
+  | 'cycleRegionNext'
+  | 'cycleRegionPrev'
+  | 'focusTerminal'
+  | 'help'
 
 export type Action = { id: ActionId; label: string; category: string; def: string }
 
@@ -39,6 +44,11 @@ export const ACTIONS: Action[] = [
   { id: 'gotoSnippets', label: 'Go to Snippets', category: 'Navigation', def: 'mod+3' },
   { id: 'gotoForwards', label: 'Go to Port Forwards', category: 'Navigation', def: 'mod+4' },
   { id: 'gotoSettings', label: 'Go to Settings', category: 'Navigation', def: 'mod+5' },
+  { id: 'gotoHistory', label: 'Go to History', category: 'Navigation', def: 'mod+6' },
+  { id: 'cycleRegionNext', label: 'Focus next region', category: 'Navigation', def: 'f6' },
+  { id: 'cycleRegionPrev', label: 'Focus previous region', category: 'Navigation', def: 'shift+f6' },
+  { id: 'focusTerminal', label: 'Focus the terminal', category: 'Navigation', def: 'mod+j' },
+  { id: 'help', label: 'Keyboard shortcuts', category: 'General', def: 'shift+/' },
 ]
 
 const LS_KEY = 'ssh.keymap'

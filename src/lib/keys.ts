@@ -24,6 +24,14 @@ export function eventToBinding(e: KeyLike): string | null {
   return parts.join('+')
 }
 
+// True when the event would produce a character (a single key, at most Shift).
+// Such chords must never be stolen from a focused terminal or text input — e.g.
+// `?` must type in the shell, not open the shortcut sheet.
+export function isPrintableChord(e: KeyLike): boolean {
+  if (e.metaKey || e.ctrlKey || e.altKey) return false
+  return e.key.length === 1
+}
+
 const SYMBOL: Record<string, string> = {
   mod: '⌘',
   shift: '⇧',

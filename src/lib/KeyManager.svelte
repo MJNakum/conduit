@@ -2,6 +2,8 @@
   import { KeyRound, Plus, Upload, Copy, Trash2, ShieldCheck } from '@lucide/svelte'
   import { keysStore, generateKey, importKey, deleteKey, store, type Key } from './state.svelte'
   import { toast } from './toast.svelte'
+  import { trapFocus } from './actions/trapFocus'
+  import { confirmDialog } from './dialog.svelte'
 
   let mode = $state<'none' | 'generate' | 'import'>('none')
   let busy = $state(false)
@@ -69,7 +71,7 @@
   async function remove(k: Key) {
     const n = usedBy(k.id)
     const msg = n > 0 ? `Delete "${k.name}"? It is used by ${n} host${n === 1 ? '' : 's'}.` : `Delete "${k.name}"?`
-    if (confirm(msg)) {
+    if (await confirmDialog({ title: 'Delete key', message: msg, okLabel: 'Delete', danger: true })) {
       await deleteKey(k.id)
       toast(`Deleted key "${k.name}"`)
     }
@@ -126,7 +128,7 @@
 
 {#if mode !== 'none'}
   <div class="backdrop" onclick={() => (mode = 'none')} role="presentation">
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-modal="true" use:trapFocus={{ onclose: () => (mode = 'none') }}>
       {#if mode === 'generate'}
         <div class="mh"><Plus size={15} /> Generate key</div>
         <div class="mbody">

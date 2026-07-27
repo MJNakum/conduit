@@ -3,6 +3,7 @@
   import { saveHost, keysStore, store, hostIcon, type Host } from './state.svelte'
   import { allSchemes } from './theme.svelte'
   import { toast } from './toast.svelte'
+  import { trapFocus } from './actions/trapFocus'
 
   let { host, onclose }: { host: Host; onclose: () => void } = $props()
 
@@ -45,7 +46,7 @@
 </script>
 
 <div class="backdrop" onclick={onclose} role="presentation">
-  <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+  <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-modal="true" use:trapFocus={{ onclose }}>
     <div class="mh">
       <Pencil size={15} />
       {host.name ? `Edit host — ${host.name}` : 'New host'}

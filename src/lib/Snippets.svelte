@@ -12,6 +12,8 @@
     type Snippet,
   } from './state.svelte'
   import { toast } from './toast.svelte'
+  import { trapFocus } from './actions/trapFocus'
+  import { confirmDialog } from './dialog.svelte'
 
   let editing = $state<Snippet | null>(null)
   // Run-with-parameters state.
@@ -39,8 +41,8 @@
     running = null
   }
 
-  function execute(s: Snippet, command: string) {
-    if (s.confirm && !confirm(`Run "${s.name}"?\n\n${command}`)) return
+  async function execute(s: Snippet, command: string) {
+    if (s.confirm && !(await confirmDialog({ title: 'Run snippet', message: `Run "${s.name}"?\n\n${command}`, okLabel: 'Run' }))) return
     if (!runInActiveSession(command)) note = 'No active session — open and connect a host first.'
   }
 
@@ -95,7 +97,7 @@
 
 {#if editing}
   <div class="backdrop" onclick={() => (editing = null)} role="presentation">
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-modal="true" use:trapFocus={{ onclose: () => (editing = null) }}>
       <div class="mh"><Zap size={15} /> {editing.name ? 'Edit snippet' : 'New snippet'}</div>
       <div class="mbody">
         <div class="field"><label for="s-name">Name</label><input id="s-name" bind:value={editing.name} placeholder="restart service" /></div>
@@ -116,7 +118,7 @@
 
 {#if running}
   <div class="backdrop" onclick={() => (running = null)} role="presentation">
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-modal="true" use:trapFocus={{ onclose: () => (running = null) }}>
       <div class="mh"><Play size={15} /> Run {running.name}</div>
       <div class="mbody">
         {#each snippetVars(running.command) as v (v)}

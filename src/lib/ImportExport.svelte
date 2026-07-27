@@ -9,6 +9,7 @@
     type Host,
   } from './state.svelte'
   import { toast } from './toast.svelte'
+  import { trapFocus } from './actions/trapFocus'
 
   let { mode, onclose }: { mode: 'import' | 'export'; onclose: () => void } = $props()
 
@@ -107,7 +108,7 @@
 </script>
 
 <div class="backdrop" onclick={onclose} role="presentation">
-  <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+  <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-modal="true" use:trapFocus={{ onclose }}>
     {#if mode === 'import'}
       <div class="mh"><Upload size={15} /> Import {source === 'putty' ? 'PuTTY sessions' : 'from ssh_config'}</div>
       <div class="mbody">

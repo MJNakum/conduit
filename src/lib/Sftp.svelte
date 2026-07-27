@@ -2,6 +2,8 @@
   import { onMount, onDestroy } from 'svelte'
   import { FolderOpen, Folder, File, ArrowUp, Download, Upload, RefreshCw } from '@lucide/svelte'
   import { openSftp, sftpList, sftpDownload, sftpUpload, sftpClose, type SftpEntry, type Host } from './state.svelte'
+  import { trapFocus } from './actions/trapFocus'
+  import { promptDialog } from './dialog.svelte'
 
   let { host, onclose }: { host: Host; onclose: () => void } = $props()
 
@@ -35,7 +37,7 @@
 
   async function download(e: SftpEntry) {
     if (!id) return
-    const local = prompt('Save to local path:', `~/Downloads/${e.name}`)?.trim()
+    const local = (await promptDialog({ title: 'Download to', value: `~/Downloads/${e.name}`, placeholder: 'Local path' }))?.trim()
     if (!local) return
     try {
       await sftpDownload(id, join(cwd, e.name), local)
@@ -46,7 +48,7 @@
 
   async function upload() {
     if (!id) return
-    const local = prompt('Local file to upload:')?.trim()
+    const local = (await promptDialog({ title: 'Upload local file', placeholder: '/path/to/file' }))?.trim()
     if (!local) return
     const base = local.split('/').pop() ?? 'upload'
     try {
@@ -72,7 +74,7 @@
 </script>
 
 <div class="backdrop" onclick={onclose} role="presentation">
-  <div class="sheet" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+  <div class="sheet" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-modal="true" use:trapFocus={{ onclose }}>
     <div class="sh">
       <FolderOpen size={15} /> SFTP — {host.name}
       <span class="spacer"></span>

@@ -3,6 +3,8 @@
   import { invoke } from '@tauri-apps/api/core'
   import { History as HistoryIcon, FolderOpen, RefreshCw, Trash2, ExternalLink } from '@lucide/svelte'
   import { toast } from './toast.svelte'
+  import { roving } from './actions/roving'
+  import { confirmDialog } from './dialog.svelte'
 
   type Entry = { file: string; host: string; ts: number; size: number }
 
@@ -42,7 +44,8 @@
 
   async function remove(e: Entry, ev: MouseEvent) {
     ev.stopPropagation()
-    if (!confirm(`Delete the ${e.host} log from ${fmtDate(e.ts)}?`)) return
+    const ok = await confirmDialog({ title: 'Delete log', message: `Delete the ${e.host} log from ${fmtDate(e.ts)}?`, okLabel: 'Delete', danger: true })
+    if (!ok) return
     await invoke('log_delete', { file: e.file })
     await load()
     toast('Log deleted')
@@ -70,23 +73,25 @@
     </div>
   {:else}
     <div class="split">
-      <ul class="list">
+      <ul class="list" role="group" aria-label="Session logs" use:roving={{ orientation: 'vertical' }}>
         {#each logs as e (e.file)}
           <li>
             <div
               class="row"
               class:sel={sel?.file === e.file}
               role="button"
-              tabindex="0"
+              tabindex="-1"
+              data-roving-item
+              aria-label={`${e.host} log from ${fmtDate(e.ts)}`}
               onclick={() => open(e)}
-              onkeydown={(ev) => { if (ev.key === 'Enter') open(e) }}
+              onkeydown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(e) } }}
             >
               <span class="host">{e.host}</span>
               <span class="date muted">{fmtDate(e.ts)}</span>
               <span class="size muted mono">{fmtSize(e.size)}</span>
               <span class="rowacts">
-                <button class="ic" title="Reveal in Finder" aria-label="Reveal" onclick={(ev) => { ev.stopPropagation(); reveal(e.file) }}><ExternalLink size={13} /></button>
-                <button class="ic danger" title="Delete" aria-label="Delete" onclick={(ev) => remove(e, ev)}><Trash2 size={13} /></button>
+                <button class="ic" data-roving-action title="Reveal in Finder" aria-label="Reveal in Finder" onclick={(ev) => { ev.stopPropagation(); reveal(e.file) }}><ExternalLink size={13} /></button>
+                <button class="ic danger" data-roving-action title="Delete" aria-label="Delete log" onclick={(ev) => remove(e, ev)}><Trash2 size={13} /></button>
               </span>
             </div>
           </li>
@@ -197,6 +202,11 @@
     background: hsl(var(--primary) / 0.1);
     box-shadow: inset 2px 0 0 hsl(var(--primary));
   }
+  .row:focus-visible {
+    outline: none;
+    background: hsl(var(--primary) / 0.14);
+    box-shadow: inset 2px 0 0 hsl(var(--primary));
+  }
   .host {
     grid-area: host;
     font-size: 13px;
@@ -218,7 +228,8 @@
     opacity: 0;
   }
   .row:hover .rowacts,
-  .row.sel .rowacts {
+  .row.sel .rowacts,
+  .row:focus-within .rowacts {
     opacity: 1;
   }
   .ic {

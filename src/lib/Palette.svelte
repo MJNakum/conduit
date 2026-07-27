@@ -1,41 +1,72 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { Search, X, type Icon } from '@lucide/svelte'
-  import { store, ui, openTab, closeTab, hostIcon, tabHost, fuzzy } from './state.svelte'
+  import { Search, Command, TerminalSquare, type Icon } from '@lucide/svelte'
+  import { store, ui, openTab, hostIcon, tabHost, fuzzy } from './state.svelte'
+  import { trapFocus } from './actions/trapFocus'
+  import { ACTIONS, bindingOf, formatBinding, type ActionId } from './keymap.svelte'
 
-  let { onclose }: { onclose: () => void } = $props()
+  let {
+    onclose,
+    onrun,
+    onactivateTab,
+  }: { onclose: () => void; onrun: (id: ActionId) => void; onactivateTab: (key: string) => void } = $props()
 
   let query = $state('')
   let sel = $state(0)
   let input = $state<HTMLInputElement>()
 
-  type Kind = 'Hosts' | 'Commands'
+  // Group names double as section headers, in this display order.
+  type Kind = 'Hosts' | 'Open Tabs' | 'Navigation' | 'Tabs' | 'Session' | 'General'
+  const ORDER: Kind[] = ['Hosts', 'Open Tabs', 'Navigation', 'Tabs', 'Session', 'General']
   type Item = { label: string; sub: string; icon: typeof Icon; kind: Kind; hint?: string[]; run: () => void }
 
-  // Hosts (open in a new tab) + a close-tab command when a terminal tab is active.
+  // A universal hub: connect to any host, jump to any open tab, and run every
+  // registered action (each shown with its live binding).
   const items = $derived.by<Item[]>(() => {
-    const list: Item[] = store.hosts.map((h) => ({
-      label: h.name,
-      sub: `${h.user}@${h.hostname}:${h.port}`,
-      icon: hostIcon(h),
-      kind: 'Hosts',
-      hint: ['↵ connect'],
-      run: () => {
-        openTab(h)
-        onclose()
-      },
-    }))
-    if (ui.active !== 'home') {
-      const key = ui.active
+    const list: Item[] = []
+
+    // Hosts — open in a new tab.
+    for (const h of store.hosts) {
       list.push({
-        label: 'Close current tab',
-        sub: tabHost(ui.tabs.find((t) => t.key === key)!)?.name ?? '',
-        icon: X,
-        kind: 'Commands',
-        hint: ['⌘W'],
+        label: h.name,
+        sub: `${h.user}@${h.hostname}:${h.port}`,
+        icon: hostIcon(h),
+        kind: 'Hosts',
+        hint: ['↵ connect'],
         run: () => {
-          closeTab(key)
+          openTab(h)
           onclose()
+        },
+      })
+    }
+
+    // Open tabs — switch focus to a live session.
+    for (const t of ui.tabs) {
+      if (t.key === ui.active) continue
+      list.push({
+        label: `Switch to ${tabHost(t)?.name ?? 'New tab'}`,
+        sub: 'open session',
+        icon: TerminalSquare,
+        kind: 'Open Tabs',
+        run: () => {
+          onactivateTab(t.key)
+          onclose()
+        },
+      })
+    }
+
+    // Every registered action except opening this palette itself.
+    for (const a of ACTIONS) {
+      if (a.id === 'palette') continue
+      list.push({
+        label: a.label,
+        sub: '',
+        icon: Command,
+        kind: a.category as Kind,
+        hint: [formatBinding(bindingOf(a.id))],
+        run: () => {
+          onclose()
+          onrun(a.id)
         },
       })
     }
@@ -52,9 +83,9 @@
 
   // Group into ordered sections while keeping a flat index for keyboard nav.
   const groups = $derived(
-    (['Hosts', 'Commands'] as Kind[])
-      .map((kind) => ({ kind, items: filtered.filter((it) => it.kind === kind) }))
-      .filter((g) => g.items.length),
+    ORDER.map((kind) => ({ kind, items: filtered.filter((it) => it.kind === kind) })).filter(
+      (g) => g.items.length,
+    ),
   )
 
   $effect(() => {
@@ -81,7 +112,7 @@
 </script>
 
 <div class="backdrop" onclick={onclose} role="presentation">
-  <div class="palette" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+  <div class="palette" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-modal="true" use:trapFocus={{ onclose }}>
     <div class="pin">
       <Search size={16} color="hsl(var(--muted-foreground))" />
       <input bind:this={input} bind:value={query} onkeydown={onKey} placeholder="Search hosts and actions…" />

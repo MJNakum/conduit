@@ -2,6 +2,7 @@
   import { Lock, Fingerprint } from '@lucide/svelte'
   import { vault, unlockVault } from './vault.svelte'
   import { toast } from './toast.svelte'
+  import { trapFocus } from './actions/trapFocus'
 
   async function unlock() {
     const ok = await unlockVault()
@@ -10,7 +11,7 @@
 </script>
 
 <div class="lock">
-  <div class="card">
+  <div class="card" role="dialog" aria-modal="true" aria-label="Vault locked" tabindex="-1" use:trapFocus={{}}>
     <span class="ico"><Lock size={30} /></span>
     <h2>Vault locked</h2>
     <p class="muted">Authenticate to unlock your hosts, keys, and sessions.</p>
