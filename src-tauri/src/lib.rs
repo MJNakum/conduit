@@ -1,3 +1,4 @@
+mod auth;
 mod forwards;
 mod hosts;
 mod keys;
@@ -36,6 +37,7 @@ pub fn run() {
             secrets::secret_set,
             secrets::secret_has,
             secrets::secret_delete,
+            secrets::secrets_purge,
             sshconfig::ssh_config_import,
             sshconfig::ssh_config_export,
             sshconfig::ssh_config_export_write,
@@ -45,6 +47,10 @@ pub fn run() {
             forwards::forward_start,
             forwards::forward_stop,
             logging::logs_dir_path,
+            logging::logs_list,
+            logging::log_read,
+            logging::log_reveal,
+            logging::log_delete,
             snippets::snippets_list,
             snippets::snippet_save,
             snippets::snippet_delete,
@@ -53,7 +59,8 @@ pub fn run() {
             sftp::sftp_list,
             sftp::sftp_download,
             sftp::sftp_upload,
-            sftp::sftp_close
+            sftp::sftp_close,
+            auth::vault_authenticate
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -70,3 +70,15 @@ body {
 .muted {
   color: hsl(var(--muted-foreground));
 }
+
+/* Keyboard focus is always visible — a single ring across the whole app so no
+   focusable control is ever a silent target. Mouse clicks don't trigger
+   :focus-visible, so this stays out of the way of pointer users. xterm draws
+   its own cursor, so its helper textarea is exempt. */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+.xterm .xterm-helper-textarea:focus-visible {
+  outline: none;
+}

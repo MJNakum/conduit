@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { Search, Plus, Star, Pencil, Trash2, Rows3, Rows4, Upload, Download, X, FolderOpen } from '@lucide/svelte'
+  import { Search, Plus, Star, Pencil, Trash2, Rows3, Rows4, LayoutGrid, Upload, Download, X, FolderOpen } from '@lucide/svelte'
   import HostModal from './HostModal.svelte'
   import ImportExport from './ImportExport.svelte'
   import Sftp from './Sftp.svelte'
@@ -15,9 +15,13 @@
     saveView,
     deleteView,
     inGroup,
+    broadcast,
     type Host,
     type View,
   } from './state.svelte'
+  import { toast } from './toast.svelte'
+  import { roving } from './actions/roving'
+  import { promptDialog } from './dialog.svelte'
 
   let { onopen }: { onopen: (h: Host) => void } = $props()
 
@@ -26,8 +30,14 @@
   let editing = $state<Host | null>(null)
   let sftpHost = $state<Host | null>(null)
   let portio = $state<'import' | 'export' | null>(null)
-  let dense = $state(false)
-  let sel = $state(0)
+  // View density persists across sessions (like the theme prefs).
+  let mode = $state<'comfortable' | 'compact' | 'grid'>(
+    (localStorage.getItem('ssh.hostView') as 'comfortable' | 'compact' | 'grid') || 'comfortable',
+  )
+  function setMode(m: typeof mode) {
+    mode = m
+    localStorage.setItem('ssh.hostView', m)
+  }
   let searchEl = $state<HTMLInputElement>()
 
   const q = $derived(filter.toLowerCase().trim())
@@ -53,9 +63,12 @@
     filter = v.search
     activeTags = [...v.tags]
   }
-  function saveCurrentView() {
-    const name = prompt('Save view as:')?.trim()
-    if (name) saveView({ id: crypto.randomUUID(), name, tags: [...activeTags], search: filter })
+  async function saveCurrentView() {
+    const name = (await promptDialog({ title: 'Save view as', placeholder: 'View name' }))?.trim()
+    if (name) {
+      saveView({ id: crypto.randomUUID(), name, tags: [...activeTags], search: filter })
+      toast(`View "${name}" saved`)
+    }
   }
 
   const filtered = $derived(store.hosts.filter(match))
@@ -91,29 +104,16 @@
     tick().then(() => window.dispatchEvent(new Event('resize')))
   }
 
-  // Keep selection in range as the list changes.
-  $effect(() => {
-    if (sel >= visible.length) sel = Math.max(0, visible.length - 1)
-  })
-
-  // Keyboard: '/' focuses search, arrows move selection, Enter connects — but
-  // only while the Sessions/home tab is the active surface.
+  // Roving arrow-nav lives on the list container; Enter/click opens. This handler
+  // only adds the '/' quick-focus for search, and only on the home surface.
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (ui.active !== 'home' || editing) return
-      const inSearch = e.target === searchEl
-      if (e.key === '/' && !inSearch) {
+      if (ui.active !== 'home' || editing || broadcast.on) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return
+      if (e.key === '/') {
         e.preventDefault()
         searchEl?.focus()
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        sel = Math.min(sel + 1, visible.length - 1)
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        sel = Math.max(sel - 1, 0)
-      } else if (e.key === 'Enter' && visible[sel]) {
-        e.preventDefault()
-        onopen(visible[sel])
       }
     }
     window.addEventListener('keydown', onKey)
@@ -129,11 +129,14 @@
   </div>
   <div class="spacer"></div>
   <div class="seg density">
-    <button class:active={!dense} title="Comfortable" aria-label="Comfortable" onclick={() => (dense = false)}>
+    <button class:active={mode === 'comfortable'} title="Comfortable" aria-label="Comfortable" onclick={() => setMode('comfortable')}>
       <Rows3 size={14} />
     </button>
-    <button class:active={dense} title="Compact" aria-label="Compact" onclick={() => (dense = true)}>
+    <button class:active={mode === 'compact'} title="Compact" aria-label="Compact" onclick={() => setMode('compact')}>
       <Rows4 size={14} />
+    </button>
+    <button class:active={mode === 'grid'} title="Grid" aria-label="Grid" onclick={() => setMode('grid')}>
+      <LayoutGrid size={14} />
     </button>
   </div>
   <button class="btn" title="Import from ssh_config" onclick={() => (portio = 'import')}>
@@ -152,7 +155,7 @@
     {#each viewsStore.list as v (v.id)}
       <span class="viewchip">
         <button onclick={() => applyView(v)}>{v.name}</button>
-        <button class="vx" aria-label="Delete view" onclick={() => deleteView(v.id)}><X size={11} /></button>
+        <button class="vx" aria-label="Delete view" onclick={() => { deleteView(v.id); toast('View removed') }}><X size={11} /></button>
       </span>
     {/each}
     {#each allTags as t}
@@ -176,7 +179,14 @@
   </div>
 {/if}
 
-<div class="listscroll" class:dense>
+<div
+  class="listscroll"
+  class:dense={mode === 'compact'}
+  class:gridmode={mode === 'grid'}
+  role="group"
+  aria-label="Hosts"
+  use:roving={{ orientation: mode === 'grid' ? 'grid' : 'vertical' }}
+>
   {#if visible.length === 0}
     <div class="empty">
       <h2>No hosts yet</h2>
@@ -186,29 +196,73 @@
   {:else}
     {#if !q && favorites.length}
       <div class="cluster-h"><Star size={12} color="hsl(var(--amber))" /> Favorites</div>
-      {#each favorites as h (h.id)}
-        {@render row(h, visible.indexOf(h))}
-      {/each}
+      <div class="items">
+        {#each favorites as h (h.id)}
+          {@render item(h, visible.indexOf(h))}
+        {/each}
+      </div>
     {/if}
     {#if rest.length}
       <div class="cluster-h">{q ? `${filtered.length} match${filtered.length === 1 ? '' : 'es'}` : `All Hosts · ${store.hosts.length}`}</div>
-      {#each rest as h (h.id)}
-        {@render row(h, visible.indexOf(h))}
-      {/each}
+      <div class="items">
+        {#each rest as h (h.id)}
+          {@render item(h, visible.indexOf(h))}
+        {/each}
+      </div>
     {/if}
   {/if}
 </div>
 
-{#snippet row(h: Host, i: number)}
+{#snippet item(h: Host, i: number)}
+  {#if mode === 'grid'}{@render card(h, i)}{:else}{@render row(h, i)}{/if}
+{/snippet}
+
+{#snippet card(h: Host, _i: number)}
+  {@const Icon = hostIcon(h)}
+  <div
+    class="card"
+    role="button"
+    tabindex="-1"
+    data-roving-item
+    aria-label={`Connect to ${h.name}`}
+    onclick={() => onopen(h)}
+    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onopen(h) } }}
+  >
+    {#if h.color}<span class="rail" style:background={h.color}></span>{/if}
+    <div class="chead">
+      <span class="hico" style:color={h.color ?? undefined}><Icon size={16} /></span>
+      <span class="name">{h.name}</span>
+      <span class="spacer"></span>
+      {#if h.favorite}<span class="star"><Star size={13} /></span>{/if}
+    </div>
+    <div class="addr muted mono">{h.user}@{h.hostname}:{h.port}</div>
+    <div class="ctags">
+      {#each h.tags as t}<span class="chip tag">{t}</span>{/each}
+    </div>
+    <span class="actions">
+      <button class="iconbtn" data-roving-action title="SFTP" aria-label={`SFTP to ${h.name}`} onclick={(e) => { e.stopPropagation(); sftpHost = h }}>
+        <FolderOpen size={14} />
+      </button>
+      <button class="iconbtn" data-roving-action title="Edit" aria-label={`Edit ${h.name}`} onclick={(e) => { e.stopPropagation(); editing = { ...h } }}>
+        <Pencil size={14} />
+      </button>
+      <button class="iconbtn" data-roving-action title="Delete" aria-label={`Delete ${h.name}`} onclick={(e) => { e.stopPropagation(); deleteHost(h.id); toast(`Deleted "${h.name}"`) }}>
+        <Trash2 size={14} />
+      </button>
+    </span>
+  </div>
+{/snippet}
+
+{#snippet row(h: Host, _i: number)}
   {@const Icon = hostIcon(h)}
   <div
     class="row"
-    class:sel={i === sel}
     role="button"
     tabindex="-1"
+    data-roving-item
+    aria-label={`Connect to ${h.name}`}
     onclick={() => onopen(h)}
-    onmouseenter={() => (sel = i)}
-    onkeydown={(e) => { if (e.key === 'Enter') onopen(h) }}
+    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onopen(h) } }}
   >
     {#if h.color}<span class="rail" style:background={h.color}></span>{/if}
     <span class="hico" style:color={h.color ?? undefined}><Icon size={16} /></span>
@@ -217,13 +271,13 @@
     {#each h.tags as t}<span class="chip tag">{t}</span>{/each}
     <span class="spacer"></span>
     <span class="actions">
-      <button class="iconbtn" title="SFTP" aria-label="SFTP" onclick={(e) => { e.stopPropagation(); sftpHost = h }}>
+      <button class="iconbtn" data-roving-action title="SFTP" aria-label={`SFTP to ${h.name}`} onclick={(e) => { e.stopPropagation(); sftpHost = h }}>
         <FolderOpen size={14} />
       </button>
-      <button class="iconbtn" title="Edit" aria-label="Edit" onclick={(e) => { e.stopPropagation(); editing = { ...h } }}>
+      <button class="iconbtn" data-roving-action title="Edit" aria-label={`Edit ${h.name}`} onclick={(e) => { e.stopPropagation(); editing = { ...h } }}>
         <Pencil size={14} />
       </button>
-      <button class="iconbtn" title="Delete" aria-label="Delete" onclick={(e) => { e.stopPropagation(); deleteHost(h.id) }}>
+      <button class="iconbtn" data-roving-action title="Delete" aria-label={`Delete ${h.name}`} onclick={(e) => { e.stopPropagation(); deleteHost(h.id); toast(`Deleted "${h.name}"`) }}>
         <Trash2 size={14} />
       </button>
     </span>
@@ -440,6 +494,62 @@
     text-transform: uppercase;
     color: hsl(var(--muted-foreground));
   }
+  /* In row modes the wrapper is inert; in grid mode it lays the cards out. */
+  .items {
+    display: contents;
+  }
+  .gridmode .items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 8px;
+    padding: 4px 16px 8px;
+  }
+  .card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 11px 12px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 9px;
+    background: hsl(var(--card));
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .card:hover {
+    background: hsl(var(--muted));
+  }
+  .card:focus-visible {
+    border-color: hsl(var(--primary) / 0.6);
+    background: hsl(var(--primary) / 0.09);
+    outline: none;
+  }
+  .chead {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .ctags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-height: 19px;
+  }
+  /* Always laid out, only toggled visible — keeps card height stable on hover. */
+  .card .actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 2px;
+    visibility: hidden;
+  }
+  .card:hover .actions,
+  .card:focus-within .actions {
+    visibility: visible;
+  }
+  .card .rail {
+    top: 0;
+    bottom: 0;
+  }
   .row {
     display: flex;
     align-items: center;
@@ -455,9 +565,10 @@
   .row:hover {
     background: hsl(var(--muted));
   }
-  .row.sel {
+  .row:focus-visible {
     background: hsl(var(--primary) / 0.09);
     box-shadow: inset 2px 0 0 hsl(var(--primary));
+    outline: none;
   }
   /* host accent color — a subtle identity rail, distinct from the selection */
   .rail {
@@ -497,7 +608,8 @@
     align-items: center;
     gap: 1px;
   }
-  .row:hover .actions {
+  .row:hover .actions,
+  .row:focus-within .actions {
     display: flex;
   }
   .iconbtn {

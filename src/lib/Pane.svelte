@@ -5,6 +5,7 @@
   import Stepper from './Stepper.svelte'
   import { store, ui, broadcast, hostIcon, resolveJumps, type Pane } from './state.svelte'
   import { resolveScheme, xtermTheme, settings } from './theme.svelte'
+  import { toast } from './toast.svelte'
 
   let {
     pane,
@@ -27,11 +28,15 @@
   // Telnet has no client auth; SSH managed-key/saved-secret also skip the prompt.
   const promptSecret = $derived(!isTelnet && !hasSaved && !managedKey)
 
-  // Does the keychain already hold a secret for this host? If so, skip the prompt.
+  // Does the keychain already hold a password for this host? Only relevant for
+  // password-auth SSH — probing key/telnet hosts would trigger a needless
+  // Keychain prompt for a slot they never use.
   $effect(() => {
     const h = pane.host
-    if (h && !pane.sessionId) {
+    if (h && !pane.sessionId && h.auth === 'password' && h.protocol !== 'telnet') {
       invoke<boolean>('secret_has', { hostId: h.id }).then((v) => (hasSaved = v))
+    } else {
+      hasSaved = false
     }
   })
 
@@ -47,6 +52,8 @@
     if (!pane.host) return
     pane.error = ''
     pane.phase = 'connecting'
+    pane.connLog = []
+    pane.activeStep = 'connecting'
     try {
       if (isTelnet) {
         pane.sessionId = await invoke<string>('telnet_connect', {
@@ -63,16 +70,28 @@
         auth: pane.host.auth,
         keyId: pane.host.keyId,
         identityFile: pane.host.identityFile,
-        secret: hasSaved ? null : secretVal,
-        save: !hasSaved && saveSecret,
+        // Only send/save a secret when we actually prompted for one. Otherwise
+        // (managed key, telnet, or an already-saved secret) leave it null so we
+        // never write a junk empty entry or re-read the keychain needlessly.
+        secret: promptSecret ? secretVal : null,
+        save: promptSecret && saveSecret,
         jumps: resolveJumps(pane.host),
         logName: pane.host.logging ? pane.host.name : null,
       })
+      if (promptSecret && saveSecret) toast('Password saved to Keychain')
       secretVal = ''
     } catch (e) {
       pane.phase = 'error'
       pane.error = String(e)
     }
+  }
+
+  // Drop the saved secret so the next connect prompts again.
+  async function forgetSecret() {
+    if (!pane.host) return
+    await invoke('secret_delete', { hostId: pane.host.id })
+    hasSaved = false
+    toast('Saved password removed')
   }
 
   // Answer the backend's host-key prompt. Reject makes auth fail -> Error state.
@@ -87,6 +106,8 @@
     pane.sessionId = null
     pane.phase = ''
     pane.error = ''
+    pane.connLog = []
+    pane.activeStep = 'connecting'
   }
 
   // Reuse the backend-retained credentials to restart the same session id.
@@ -94,6 +115,8 @@
     if (!pane.sessionId) return
     pane.error = ''
     pane.phase = 'connecting'
+    pane.connLog = []
+    pane.activeStep = 'connecting'
     invoke('ssh_reconnect', { id: pane.sessionId })
   }
 
@@ -142,7 +165,12 @@
       <p class="muted mono">{pane.host.user}@{pane.host.hostname}:{pane.host.port}</p>
       <form onsubmit={(e) => { e.preventDefault(); connect() }}>
         {#if !promptSecret}
-          <p class="muted small">{isTelnet ? 'Telnet — no authentication.' : managedKey ? 'Authenticating with a managed key.' : 'Using saved secret from Keychain.'}</p>
+          <p class="muted small">
+            {isTelnet ? 'Telnet — no authentication.' : managedKey ? 'Authenticating with a managed key.' : 'Using saved secret from Keychain.'}
+            {#if hasSaved}
+              <button type="button" class="linkbtn" onclick={forgetSecret}>Forget</button>
+            {/if}
+          </p>
         {:else}
           <!-- svelte-ignore a11y_autofocus -->
           <input
@@ -198,7 +226,14 @@
             </div>
           {:else}
             <h3>{#if Icon}<Icon size={18} />{/if} {pane.host.name}</h3>
-            <Stepper phase={pane.phase} error={pane.error} method={pane.method} />
+            <Stepper
+              phase={pane.phase}
+              error={pane.error}
+              method={pane.method}
+              protocol={pane.host.protocol ?? 'ssh'}
+              log={pane.connLog}
+              activeStep={pane.activeStep}
+            />
             {#if pane.phase === 'disconnected'}
               <button class="btn primary" onclick={reconnect}>Reconnect</button>
             {:else if pane.phase === 'error'}
@@ -350,6 +385,16 @@
   .save input {
     width: auto;
     padding: 0;
+  }
+  .linkbtn {
+    background: none;
+    border: 0;
+    padding: 0;
+    margin-left: 6px;
+    font: inherit;
+    color: hsl(var(--primary));
+    cursor: pointer;
+    text-decoration: underline;
   }
   .hostkey {
     width: 420px;

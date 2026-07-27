@@ -30,3 +30,11 @@ ssh-key = { version = "=0.7.0-rc.11", features = ["getrandom"] }
 tokio = { version = "1.53.0", features = ["rt-multi-thread", "macros", "io-util", "sync"] }
 # Cross-platform OS keychain (macOS Keychain / Windows Credential Manager).
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
+
+# Vault lock: Touch ID / macOS password via LocalAuthentication. Thin objc2
+# framework binding; objc2/block2/objc2-foundation are already in the tree.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-local-authentication = { version = "0.3", features = ["LAContext", "LAError"] }
+block2 = "0.6"

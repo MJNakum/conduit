@@ -10,6 +10,7 @@
     History,
     ChevronRight,
     Lock,
+    SlidersHorizontal,
     Plus,
     X,
   } from '@lucide/svelte'
@@ -19,10 +20,20 @@
   import KeyManager from './lib/KeyManager.svelte'
   import PortForwards from './lib/PortForwards.svelte'
   import Snippets from './lib/Snippets.svelte'
-  import Appearance from './lib/Appearance.svelte'
+  import HistoryView from './lib/History.svelte'
+  import Settings from './lib/Settings.svelte'
+  import Toaster from './lib/Toaster.svelte'
+  import LockScreen from './lib/LockScreen.svelte'
   import BroadcastBar from './lib/BroadcastBar.svelte'
+  import ShortcutsOverlay from './lib/ShortcutsOverlay.svelte'
+  import DialogHost from './lib/DialogHost.svelte'
   import { Radio } from '@lucide/svelte'
-  import { settings, applyAppTheme } from './lib/theme.svelte'
+  import { settings, applyAppTheme, setAppTheme, type AppTheme } from './lib/theme.svelte'
+  import { matchEvent, bindingOf, formatBinding, isPrintableChord, type ActionId } from './lib/keymap.svelte'
+  import { cycleRegion, noteFocus, region } from './lib/focus.svelte'
+  import { roving } from './lib/actions/roving'
+  import { vault, lockVault } from './lib/vault.svelte'
+  import { toast } from './lib/toast.svelte'
   import { loadForwards, applyForwardState } from './lib/state.svelte'
   import {
     ui,
@@ -34,6 +45,7 @@
     openTab,
     closeTab,
     applyState,
+    applyLog,
     activeCount,
     hostIcon,
     tabHost,
@@ -41,19 +53,14 @@
     type Host,
     type Tab,
     type StatePayload,
+    type LogPayload,
   } from './lib/state.svelte'
 
   let paletteOpen = $state(false)
-  let appearanceOpen = $state(false)
+  let helpOpen = $state(false)
   // Which home-view section is showing (only when no terminal tab is active).
-  let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards'>('hosts')
-
-  // Sidebar sections. Hosts + Keys + Snippets + Port Forwards are wired —
-  // History and the Groups tree are inert placeholders for their later phases
-  // (see docs/mvp-plan.md), shown so the shell has correct proportions.
-  const laterSections = [
-    { label: 'History', icon: History },
-  ]
+  let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards' | 'history' | 'settings'>('hosts')
+  let settingsTab = $state<'appearance' | 'shortcuts'>('appearance')
 
   onMount(() => {
     applyAppTheme()
@@ -62,22 +69,100 @@
     loadForwards()
     loadSnippets()
     listen<StatePayload>('ssh://state', (e) => applyState(e.payload))
+    listen<LogPayload>('ssh://log', (e) => applyLog(e.payload))
     listen<{ id: string; state: string; message?: string }>('forward://state', (e) =>
       applyForwardState(e.payload.id, e.payload.state, e.payload.message),
     )
-    // Cmd+K toggles the command palette. Captured at window level (works over
-    // xterm too, since it fires before the terminal sees the key).
+    // Global shortcut dispatch. Bindings come from the customizable keymap;
+    // captured at window level so they work over xterm too.
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey && e.key === 'k') {
-        e.preventDefault()
-        paletteOpen = !paletteOpen
-      } else if (e.key === 'Escape' && broadcast.on) {
+      if (e.key === 'Escape' && broadcast.on) {
         broadcast.on = false
+        return
+      }
+      if (vault.locked) return // no shortcuts while locked
+      // Never hijack a character key while a text field or terminal has focus —
+      // `?` must type there, not open the shortcut sheet.
+      if (isPrintableChord(e) && isTextField(document.activeElement)) return
+      const id = matchEvent(e)
+      if (id) {
+        e.preventDefault()
+        runAction(id)
       }
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // Track which region focus lives in so Focus-Next-Part (F6) advances from it.
+    const onFocusIn = (e: FocusEvent) => noteFocus(e.target)
+    window.addEventListener('focusin', onFocusIn)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('focusin', onFocusIn)
+    }
   })
+
+  // A focused text-entry surface (native field, contentEditable, or the xterm
+  // textarea) where character shortcuts must yield to typing.
+  function isTextField(el: Element | null): boolean {
+    if (!el) return false
+    const tag = el.tagName
+    return (
+      tag === 'INPUT' ||
+      tag === 'TEXTAREA' ||
+      tag === 'SELECT' ||
+      (el as HTMLElement).isContentEditable
+    )
+  }
+
+  // Drop focus into the visible tab's terminal (xterm's helper textarea).
+  function focusTerminal() {
+    const el = document.querySelector<HTMLTextAreaElement>(
+      '.page:not(.hidden) .xterm-helper-textarea',
+    )
+    el?.focus()
+  }
+
+  // Move between the Sessions tab and the open terminal tabs by offset.
+  function switchTab(dir: 1 | -1) {
+    const keys = ['home', ...ui.tabs.map((t) => t.key)]
+    const i = keys.indexOf(ui.active)
+    activate(keys[(i + dir + keys.length) % keys.length])
+  }
+
+  function cycleTheme() {
+    const order: AppTheme[] = ['dark', 'light', 'system']
+    const next = order[(order.indexOf(settings.appTheme) + 1) % order.length]
+    setAppTheme(next)
+    toast(`Theme: ${next}`)
+  }
+
+  function goSection(s: typeof section) {
+    section = s
+    if (s === 'hosts') ui.group = null
+    activate('home')
+  }
+
+  function runAction(id: ActionId) {
+    switch (id) {
+      case 'palette': paletteOpen = !paletteOpen; break
+      case 'settings': case 'gotoSettings': goSection('settings'); break
+      case 'cycleTheme': cycleTheme(); break
+      case 'newTab': activate('home'); break
+      case 'closeTab': if (ui.active !== 'home') closeTab(ui.active); break
+      case 'nextTab': switchTab(1); break
+      case 'prevTab': switchTab(-1); break
+      case 'lockVault': lockVault(); break
+      case 'broadcast': if (connectedSessions().length) broadcast.on = !broadcast.on; break
+      case 'gotoHosts': goSection('hosts'); break
+      case 'gotoKeys': goSection('keys'); break
+      case 'gotoSnippets': goSection('snippets'); break
+      case 'gotoForwards': goSection('forwards'); break
+      case 'gotoHistory': goSection('history'); break
+      case 'cycleRegionNext': cycleRegion(1); break
+      case 'cycleRegionPrev': cycleRegion(-1); break
+      case 'focusTerminal': focusTerminal(); break
+      case 'help': helpOpen = !helpOpen; break
+    }
+  }
 
   async function open(h: Host) {
     openTab(h)
@@ -107,10 +192,11 @@
 
 <main>
   <!-- TAB BAR — dot = status only; the thin top rule is the host's accent color -->
-  <nav class="tabbar">
+  <nav class="tabbar" aria-label="Open sessions" use:region={'tabbar'} use:roving={{ orientation: 'horizontal' }}>
     <button
       class="tab pinned"
       class:active={ui.active === 'home'}
+      data-roving-item
       onclick={() => activate('home')}
     >
       <TerminalIcon size={15} /> <span>Sessions</span>
@@ -121,7 +207,9 @@
       <button
         class="tab"
         class:active={ui.active === tab.key}
+        data-roving-item
         onclick={() => activate(tab.key)}
+        onkeydown={(e) => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); closeTab(tab.key) } }}
       >
         {#if host?.color}<span class="accent" style:background={host.color}></span>{/if}
         <span class="pdot" style:background={tabDot(tab)}></span>
@@ -130,25 +218,25 @@
         <span
           class="close"
           role="button"
-          tabindex="0"
+          tabindex="-1"
           aria-label="Close tab"
           onclick={(e) => { e.stopPropagation(); closeTab(tab.key) }}
-          onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); closeTab(tab.key) } }}
         ><X size={14} /></span>
       </button>
     {/each}
-    <button class="plus" aria-label="New tab" onclick={() => activate('home')}>
+    <button class="plus" aria-label="New tab" data-roving-item onclick={() => activate('home')}>
       <Plus size={15} />
     </button>
   </nav>
 
   <div class="body">
     <!-- SIDEBAR — section switcher + vault pill (local-first trust anchor) -->
-    <aside class="sidebar">
-      <div class="side-scroll">
+    <aside class="sidebar" use:region={'sidebar'}>
+      <div class="side-scroll" role="navigation" aria-label="Sections" use:roving={{ orientation: 'vertical' }}>
         <button
           class="side-item"
           class:active={ui.active === 'home' && section === 'hosts' && ui.group === null}
+          data-roving-item
           onclick={() => { section = 'hosts'; ui.group = null; activate('home') }}
         >
           <Server size={15} /> Hosts
@@ -156,6 +244,7 @@
         <button
           class="side-item"
           class:active={ui.active === 'home' && section === 'keys'}
+          data-roving-item
           onclick={() => { section = 'keys'; activate('home') }}
         >
           <KeyRound size={15} /> Keys
@@ -163,6 +252,7 @@
         <button
           class="side-item"
           class:active={ui.active === 'home' && section === 'snippets'}
+          data-roving-item
           onclick={() => { section = 'snippets'; activate('home') }}
         >
           <Zap size={15} /> Snippets
@@ -170,16 +260,27 @@
         <button
           class="side-item"
           class:active={ui.active === 'home' && section === 'forwards'}
+          data-roving-item
           onclick={() => { section = 'forwards'; activate('home') }}
         >
           <ArrowRightLeft size={15} /> Port Forwards
         </button>
-        {#each laterSections as s}
-          {@const SIcon = s.icon}
-          <div class="side-item soon" aria-disabled="true" title="Coming in a later phase">
-            <SIcon size={15} /> {s.label}
-          </div>
-        {/each}
+        <button
+          class="side-item"
+          class:active={ui.active === 'home' && section === 'settings'}
+          data-roving-item
+          onclick={() => goSection('settings')}
+        >
+          <SlidersHorizontal size={15} /> Settings
+        </button>
+        <button
+          class="side-item"
+          class:active={ui.active === 'home' && section === 'history'}
+          data-roving-item
+          onclick={() => goSection('history')}
+        >
+          <History size={15} /> History
+        </button>
         <div class="side-head">Groups</div>
         {#if groupNodes().length === 0}
           <div class="side-item soon" aria-disabled="true">Set a host's Group to build the tree</div>
@@ -189,6 +290,7 @@
               class="side-item"
               style:padding-left={`${9 + g.depth * 14}px`}
               class:active={ui.active === 'home' && section === 'hosts' && ui.group === g.path}
+              data-roving-item
               onclick={() => { section = 'hosts'; ui.group = g.path; activate('home') }}
             >
               <ChevronRight size={15} /> {g.label}
@@ -196,14 +298,14 @@
           {/each}
         {/if}
       </div>
-      <div class="vault">
+      <button class="vault" onclick={lockVault} title="Lock the vault">
         <Lock size={14} color="hsl(var(--primary))" /> Vault unlocked
-        <span class="mono kbd">⌘L</span>
-      </div>
+        <span class="mono kbd">{formatBinding(bindingOf('lockVault'))}</span>
+      </button>
     </aside>
 
     <!-- MAIN -->
-    <div class="main">
+    <div class="main" use:region={'content'}>
       <div class="page" class:hidden={ui.active !== 'home'}>
         {#if section === 'keys'}
           <KeyManager />
@@ -211,6 +313,10 @@
           <Snippets />
         {:else if section === 'forwards'}
           <PortForwards />
+        {:else if section === 'history'}
+          <HistoryView />
+        {:else if section === 'settings'}
+          <Settings bind:tab={settingsTab} />
         {:else}
           <HostList onopen={open} />
         {/if}
@@ -228,25 +334,30 @@
   {/if}
 
   <!-- FOOTER — slim global status only (per-session liveness lives on tab dots) -->
-  <footer>
+  <footer use:region={'footer'} use:roving={{ orientation: 'horizontal' }}>
     <span>{activeCount()} session{activeCount() === 1 ? '' : 's'} active</span>
     <span class="spacer"></span>
-    <button class="themebtn" class:bcast={broadcast.on} onclick={() => (broadcast.on = !broadcast.on)} disabled={connectedSessions().length === 0}>
+    <button class="themebtn" class:bcast={broadcast.on} data-roving-item onclick={() => (broadcast.on = !broadcast.on)} disabled={connectedSessions().length === 0}>
       <Radio size={12} /> Broadcast
     </button>
     <span>·</span>
-    <button class="themebtn" onclick={() => (appearanceOpen = true)}>Theme: {settings.appTheme}</button>
+    <button class="themebtn" data-roving-item onclick={() => { settingsTab = 'appearance'; goSection('settings') }}>Theme: {settings.appTheme}</button>
     <span>·</span>
-    <span class="mono">⌘K</span>
+    <span class="mono">{formatBinding(bindingOf('palette'))}</span>
     <span>command palette</span>
   </footer>
 
   {#if paletteOpen}
-    <Palette onclose={() => (paletteOpen = false)} />
+    <Palette onclose={() => (paletteOpen = false)} onrun={runAction} onactivateTab={activate} />
   {/if}
-  {#if appearanceOpen}
-    <Appearance onclose={() => (appearanceOpen = false)} />
+  {#if helpOpen}
+    <ShortcutsOverlay onclose={() => (helpOpen = false)} />
   {/if}
+  {#if vault.locked}
+    <LockScreen />
+  {/if}
+  <DialogHost />
+  <Toaster />
 </main>
 
 <style>
@@ -403,10 +514,19 @@
     padding: 8px 10px;
     border-radius: 8px;
     background: hsl(var(--muted));
+    border: none;
+    width: calc(100% - 16px);
+    color: inherit;
+    font-family: inherit;
     display: flex;
     align-items: center;
     gap: 9px;
     font-size: 12px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .vault:hover {
+    background: hsl(var(--border));
   }
   .kbd {
     margin-left: auto;

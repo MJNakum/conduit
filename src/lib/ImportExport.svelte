@@ -8,6 +8,8 @@
     saveHost,
     type Host,
   } from './state.svelte'
+  import { toast } from './toast.svelte'
+  import { trapFocus } from './actions/trapFocus'
 
   let { mode, onclose }: { mode: 'import' | 'export'; onclose: () => void } = $props()
 
@@ -59,7 +61,9 @@
     busy = true
     err = ''
     try {
-      for (const h of parsed) if (selected.has(h.id)) await saveHost(h)
+      let n = 0
+      for (const h of parsed) if (selected.has(h.id)) { await saveHost(h); n++ }
+      toast(`Imported ${n} host${n === 1 ? '' : 's'}`)
       onclose()
     } catch (e) {
       err = String(e)
@@ -93,6 +97,7 @@
     try {
       await writeSshConfig(outPath, text)
       saved = true
+      toast(`Exported to ${outPath}`)
       setTimeout(() => (saved = false), 1800)
     } catch (e) {
       err = String(e)
@@ -103,7 +108,7 @@
 </script>
 
 <div class="backdrop" onclick={onclose} role="presentation">
-  <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+  <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-modal="true" use:trapFocus={{ onclose }}>
     {#if mode === 'import'}
       <div class="mh"><Upload size={15} /> Import {source === 'putty' ? 'PuTTY sessions' : 'from ssh_config'}</div>
       <div class="mbody">
