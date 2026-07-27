@@ -40,8 +40,47 @@ fn evaluate(reason: &str) -> Result<bool, String> {
     rx.recv().map_err(|_| "authentication cancelled".to_string())
 }
 
-// Non-macOS: no biometric gate yet — unlock succeeds so the app stays usable.
-#[cfg(not(target_os = "macos"))]
+// Windows: gate via Windows Hello (UserConsentVerifier). An unpackaged Win32 app
+// has no CoreWindow, so we must go through the HWND interop and parent the prompt
+// to our own window rather than calling the plain WinRT static.
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub async fn vault_authenticate(
+    window: tauri::WebviewWindow,
+    reason: String,
+) -> Result<bool, String> {
+    use windows::core::{Interface, HSTRING};
+    use windows::Security::Credentials::UI::{
+        UserConsentVerificationResult, UserConsentVerifier,
+    };
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::WinRT::IUserConsentVerifierInterop;
+
+    // Reconstruct HWND from the raw pointer so a windows-crate version skew with
+    // Tauri's own dependency can't cause a type mismatch.
+    let raw = window.hwnd().map_err(|e| e.to_string())?;
+    let hwnd = HWND(raw.0 as _);
+    let message = HSTRING::from(reason);
+
+    // The async result arrives off-thread; block a pooled thread so the async
+    // command resolves when it fires (mirrors the macOS path).
+    tokio::task::spawn_blocking(move || -> Result<bool, String> {
+        let interop = UserConsentVerifier::factory::<IUserConsentVerifierInterop>()
+            .map_err(|e| e.to_string())?;
+        let op = unsafe {
+            interop.RequestVerificationForWindowAsync(hwnd, &message)
+        }
+        .map_err(|e| e.to_string())?;
+        let result: UserConsentVerificationResult = op.get().map_err(|e| e.to_string())?;
+        Ok(result == UserConsentVerificationResult::Verified)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// Other platforms (Linux): no biometric gate yet — unlock succeeds so the app
+// stays usable.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tauri::command]
 pub async fn vault_authenticate(_reason: String) -> Result<bool, String> {
     Ok(true)

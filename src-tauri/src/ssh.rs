@@ -637,11 +637,12 @@ pub fn ssh_resize(
         .map_err(|_| "session closed".to_string())
 }
 
-/// Expand a leading `~/` to $HOME. ssh_config IdentityFile paths use it; russh
-/// does not. ponytail: only the leading `~`, which is the case that occurs.
+/// Expand a leading `~/` to the home dir. ssh_config IdentityFile paths use it;
+/// russh does not. Reads `HOME` (unix) and falls back to `USERPROFILE` (Windows).
+/// ponytail: only the leading `~`, which is the case that occurs.
 pub(crate) fn expand_tilde(path: &str) -> String {
     if let Some(rest) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
+        if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
             return format!("{home}/{rest}");
         }
     }
@@ -671,12 +672,19 @@ pub fn ssh_disconnect(state: State<'_, SshState>, id: String) {
 mod tests {
     use super::expand_tilde;
 
+    // One test, not two: `expand_tilde` reads process-global env vars, and Rust
+    // runs tests in parallel threads — two tests each mutating HOME would race.
     #[test]
-    fn tilde_expands_only_leading() {
+    fn tilde_expansion() {
         std::env::set_var("HOME", "/Users/x");
         assert_eq!(expand_tilde("~/.ssh/id_ed25519"), "/Users/x/.ssh/id_ed25519");
         // Absolute and bare-tilde paths pass through untouched.
         assert_eq!(expand_tilde("/etc/ssh/key"), "/etc/ssh/key");
         assert_eq!(expand_tilde("~root/key"), "~root/key");
+
+        // Windows has no HOME; USERPROFILE is the home dir and is used as fallback.
+        std::env::remove_var("HOME");
+        std::env::set_var("USERPROFILE", "C:\\Users\\x");
+        assert_eq!(expand_tilde("~/.ssh/config"), "C:\\Users\\x/.ssh/config");
     }
 }

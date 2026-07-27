@@ -1,6 +1,6 @@
 // Vault lock state. Locking hides the app behind a gate; unlocking requires
-// device-owner auth (Touch ID / macOS password) via the Rust `vault_authenticate`
-// command. No secret is read here — this only gates the UI.
+// device-owner auth (Touch ID / macOS password, or Windows Hello) via the Rust
+// `vault_authenticate` command. No secret is read here — this only gates the UI.
 import { invoke } from '@tauri-apps/api/core'
 
 export const vault = $state({ locked: false, authing: false })
