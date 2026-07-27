@@ -19,7 +19,7 @@ jobs:
           - platform: macos-latest
             args: '--target universal-apple-darwin'
           - platform: windows-latest
-            args: ''
+            args: '--bundle nsis'
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
