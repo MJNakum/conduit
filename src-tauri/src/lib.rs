@@ -14,10 +14,22 @@ mod telnet;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default()
         .manage(ssh::SshState::default())
         .manage(forwards::ForwardState::default())
-        .manage(sftp::SftpState::default())
+        .manage(sftp::SftpState::default());
+
+    // In-app auto-update (+ process for the relaunch after install). Desktop
+    // only — the updater/process plugins don't apply on mobile targets.
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+
+    builder
         .invoke_handler(tauri::generate_handler![
             ssh::ssh_connect,
             ssh::ssh_write,

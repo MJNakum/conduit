@@ -34,6 +34,7 @@
   import { roving } from './lib/actions/roving'
   import { vault, lockVault } from './lib/vault.svelte'
   import { toast } from './lib/toast.svelte'
+  import { checkForUpdates } from './lib/updates.svelte'
   import { loadForwards, applyForwardState } from './lib/state.svelte'
   import {
     ui,
@@ -60,7 +61,7 @@
   let helpOpen = $state(false)
   // Which home-view section is showing (only when no terminal tab is active).
   let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards' | 'history' | 'settings'>('hosts')
-  let settingsTab = $state<'appearance' | 'shortcuts'>('appearance')
+  let settingsTab = $state<'appearance' | 'shortcuts' | 'about'>('appearance')
 
   onMount(() => {
     applyAppTheme()
@@ -68,6 +69,8 @@
     loadKeys()
     loadForwards()
     loadSnippets()
+    // Silent auto-update check on launch; only surfaces if an update is found.
+    checkForUpdates()
     listen<StatePayload>('ssh://state', (e) => applyState(e.payload))
     listen<LogPayload>('ssh://log', (e) => applyLog(e.payload))
     listen<{ id: string; state: string; message?: string }>('forward://state', (e) =>
