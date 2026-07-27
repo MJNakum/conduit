@@ -643,7 +643,16 @@ pub fn ssh_resize(
 pub(crate) fn expand_tilde(path: &str) -> String {
     if let Some(rest) = path.strip_prefix("~/") {
         if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-            return std::path::Path::new(&home).join(rest).to_string_lossy().into_owned();
+            // On Windows use Path::join so the OS separator is correct, then
+            // normalise any remaining forward-slashes in the rest component.
+            #[cfg(target_os = "windows")]
+            return std::path::Path::new(&home)
+                .join(rest)
+                .to_string_lossy()
+                .replace('/', "\\");
+
+            #[cfg(not(target_os = "windows"))]
+            return format!("{home}/{rest}");
         }
     }
     path.to_string()
@@ -676,15 +685,25 @@ mod tests {
     // runs tests in parallel threads — two tests each mutating HOME would race.
     #[test]
     fn tilde_expansion() {
-        std::env::set_var("HOME", "/Users/x");
-        assert_eq!(expand_tilde("~/.ssh/id_ed25519"), "/Users/x/.ssh/id_ed25519");
-        // Absolute and bare-tilde paths pass through untouched.
-        assert_eq!(expand_tilde("/etc/ssh/key"), "/etc/ssh/key");
-        assert_eq!(expand_tilde("~root/key"), "~root/key");
+        // Unix path behaviour — also the macOS CI path.
+        #[cfg(not(target_os = "windows"))]
+        {
+            std::env::set_var("HOME", "/Users/x");
+            assert_eq!(expand_tilde("~/.ssh/id_ed25519"), "/Users/x/.ssh/id_ed25519");
+            // Absolute and bare-tilde paths pass through untouched.
+            assert_eq!(expand_tilde("/etc/ssh/key"), "/etc/ssh/key");
+            assert_eq!(expand_tilde("~root/key"), "~root/key");
+        }
 
-        // Windows has no HOME; USERPROFILE is the home dir and is used as fallback.
-        std::env::remove_var("HOME");
-        std::env::set_var("USERPROFILE", "C:\\Users\\x");
-        assert_eq!(expand_tilde("~/.ssh/config"), "C:\\Users\\x\\.ssh\\config");
+        // Windows: USERPROFILE replaces HOME; Path::join + separator normalisation
+        // must produce all-backslash paths so russh and ssh-key can open them.
+        #[cfg(target_os = "windows")]
+        {
+            std::env::remove_var("HOME");
+            std::env::set_var("USERPROFILE", "C:\\Users\\x");
+            assert_eq!(expand_tilde("~/.ssh/config"), "C:\\Users\\x\\.ssh\\config");
+            assert_eq!(expand_tilde("C:\\absolute\\key"), "C:\\absolute\\key");
+            assert_eq!(expand_tilde("~root/key"), "~root/key");
+        }
     }
 }
