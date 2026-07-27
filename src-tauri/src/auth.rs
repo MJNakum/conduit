@@ -50,6 +50,7 @@ pub async fn vault_authenticate(
     reason: String,
 ) -> Result<bool, String> {
     use windows::core::{factory, HSTRING};
+    use windows::Foundation::IAsyncOperation;
     use windows::Security::Credentials::UI::{
         UserConsentVerificationResult, UserConsentVerifier,
     };
@@ -68,7 +69,9 @@ pub async fn vault_authenticate(
         // The interop factory is a free function in windows 0.61, not a method.
         let interop = factory::<UserConsentVerifier, IUserConsentVerifierInterop>()
             .map_err(|e| e.to_string())?;
-        let op = unsafe {
+        // The interop method is generic over the returned interface, so the
+        // IAsyncOperation type must be named explicitly.
+        let op: IAsyncOperation<UserConsentVerificationResult> = unsafe {
             interop.RequestVerificationForWindowAsync(hwnd, &message)
         }
         .map_err(|e| e.to_string())?;
