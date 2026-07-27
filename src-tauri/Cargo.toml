@@ -51,5 +51,7 @@ windows = { version = "0.61", features = [
     "Security_Credentials_UI",
     "Win32_Foundation",
     "Win32_System_WinRT",
-    "Foundation",
 ] }
+# IAsyncOperation lives in windows-future (split out of the windows facade, which
+# only re-exports windows_core); needed to name the interop's async return type.
+windows-future = "0.2"

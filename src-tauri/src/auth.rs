@@ -50,7 +50,7 @@ pub async fn vault_authenticate(
     reason: String,
 ) -> Result<bool, String> {
     use windows::core::{factory, HSTRING};
-    use windows::Foundation::IAsyncOperation;
+    use windows_future::IAsyncOperation;
     use windows::Security::Credentials::UI::{
         UserConsentVerificationResult, UserConsentVerifier,
     };
