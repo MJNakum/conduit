@@ -29,7 +29,7 @@ pub fn open_log(app: &AppHandle, name: &str) -> Option<File> {
     OpenOptions::new().create(true).append(true).open(path).ok()
 }
 
-/// Absolute path of the logs directory (for a future "reveal in Finder").
+/// Absolute path of the logs directory (for the "reveal in file manager" action).
 #[tauri::command]
 pub fn logs_dir_path(app: AppHandle) -> Result<String, String> {
     Ok(logs_dir(&app)?.to_string_lossy().to_string())
@@ -84,18 +84,52 @@ pub fn log_read(app: AppHandle, file: String) -> Result<String, String> {
     Ok(if len > CAP { format!("… (showing last 512 KB of {len} bytes)\n\n{text}") } else { text })
 }
 
-/// Reveal a log (or the logs folder when `file` is None) in Finder.
+/// Reveal a log (or the logs folder when `file` is None) in the system file manager.
+/// Uses `open -R` on macOS, `explorer /select` on Windows, `xdg-open` elsewhere.
 #[tauri::command]
 pub fn log_reveal(app: AppHandle, file: Option<String>) -> Result<(), String> {
     let target = match file {
         Some(f) => safe_in_logs(&app, &f)?,
         None => logs_dir(&app)?,
     };
+    reveal_path(&target)
+}
+
+#[cfg(target_os = "macos")]
+fn reveal_path(target: &std::path::Path) -> Result<(), String> {
     let mut cmd = std::process::Command::new("open");
     if target.is_file() {
         cmd.arg("-R");
     }
-    cmd.arg(&target).spawn().map_err(|e| format!("open: {e}"))?;
+    cmd.arg(target).spawn().map_err(|e| format!("open: {e}"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn reveal_path(target: &std::path::Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    // /select highlights the file inside its parent folder; for dirs just open them.
+    let arg = if target.is_file() {
+        format!("/select,{}", target.display())
+    } else {
+        target.display().to_string()
+    };
+    // CREATE_NO_WINDOW suppresses the brief console flash that explorer spawns.
+    std::process::Command::new("explorer.exe")
+        .raw_arg(&arg)
+        .creation_flags(0x0800_0000)
+        .spawn()
+        .map_err(|e| format!("explorer: {e}"))?;
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn reveal_path(target: &std::path::Path) -> Result<(), String> {
+    let dir = if target.is_file() { target.parent().unwrap_or(target) } else { target };
+    std::process::Command::new("xdg-open")
+        .arg(dir)
+        .spawn()
+        .map_err(|e| format!("xdg-open: {e}"))?;
     Ok(())
 }
 

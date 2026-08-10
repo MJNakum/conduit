@@ -78,7 +78,7 @@ export const BUILTINS: Scheme[] = [
   },
 ].map((s) => ({ ...s, builtin: true }))
 
-const DEFAULT_FONT = 'ui-monospace, "SF Mono", "JetBrains Mono", monospace'
+const DEFAULT_FONT = 'ui-monospace, "Cascadia Code", Consolas, "SF Mono", "JetBrains Mono", monospace'
 
 function ls(key: string, fallback: string): string {
   return localStorage.getItem(key) ?? fallback

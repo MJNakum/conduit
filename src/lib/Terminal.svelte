@@ -6,7 +6,7 @@
   import { X, ChevronUp, ChevronDown } from '@lucide/svelte'
   import { invoke } from '@tauri-apps/api/core'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-  import { matchEvent, isPrintableChord } from './keymap.svelte'
+  import { matchEvent, isPrintableChord, isMac } from './keymap.svelte'
   import '@xterm/xterm/css/xterm.css'
 
   // The session id returned by ssh_connect; scopes every event to this pane.
@@ -45,7 +45,7 @@
     // handler scopes it to the focused terminal (each pane has its own).
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true
-      if (e.metaKey && e.key === 'f') {
+      if ((isMac ? e.metaKey : e.ctrlKey) && e.key === 'f') {
         openSearch()
         return false
       }

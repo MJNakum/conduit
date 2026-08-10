@@ -1,7 +1,7 @@
 [package]
 name = "ssh-client"
 version = "0.1.0"
-description = "Modern local-first SSH client for macOS"
+description = "Modern local-first SSH client"
 authors = ["Meet Nakum"]
 edition = "2021"
 
@@ -30,6 +30,10 @@ ssh-key = { version = "=0.7.0-rc.11", features = ["getrandom"] }
 tokio = { version = "1.53.0", features = ["rt-multi-thread", "macros", "io-util", "sync"] }
 # Cross-platform OS keychain (macOS Keychain / Windows Credential Manager).
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
+# In-app auto-update: check a GitHub Releases endpoint, download + install a
+# signed bundle, then relaunch. Referenced only under #[cfg(desktop)] in lib.rs.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 # Vault lock: Touch ID / macOS password via LocalAuthentication. Thin objc2
 # framework binding; objc2/block2/objc2-foundation are already in the tree.
@@ -38,3 +42,16 @@ objc2 = "0.6"
 objc2-foundation = "0.3"
 objc2-local-authentication = { version = "0.3", features = ["LAContext", "LAError"] }
 block2 = "0.6"
+
+# Vault lock: Windows Hello via UserConsentVerifier. The HWND interop
+# (RequestVerificationForWindowAsync) is needed because we're an unpackaged
+# Win32 app with no CoreWindow to parent the prompt to.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = [
+    "Security_Credentials_UI",
+    "Win32_Foundation",
+    "Win32_System_WinRT",
+] }
+# IAsyncOperation lives in windows-future (split out of the windows facade, which
+# only re-exports windows_core); needed to name the interop's async return type.
+windows-future = "0.2"

@@ -1,5 +1,5 @@
 // Pure keybinding parsing/formatting — no runes, no localStorage — so it stays
-// unit-testable under plain `node`. 'mod' = Cmd on macOS.
+// unit-testable under plain `node`. 'mod' = Cmd on macOS, Ctrl everywhere else.
 
 // Minimal shape of the KeyboardEvent fields we read (lets tests pass plain objects).
 export type KeyLike = {
@@ -10,16 +10,21 @@ export type KeyLike = {
   ctrlKey?: boolean
 }
 
-// Normalize a key event to a binding string, or null for a bare modifier.
+export const isMac: boolean =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+
+// Normalize a key event to a binding string, or null for a bare modifier press.
 // Modifiers always emit in a fixed order so equal chords compare equal.
-export function eventToBinding(e: KeyLike): string | null {
+// On macOS  Cmd  → 'mod'; on Windows/Linux  Ctrl → 'mod'.
+export function eventToBinding(e: KeyLike, mac = isMac): string | null {
   const k = e.key.toLowerCase()
   if (k === 'meta' || k === 'shift' || k === 'alt' || k === 'control') return null
   const parts: string[] = []
-  if (e.metaKey) parts.push('mod')
+  if (mac ? e.metaKey : e.ctrlKey) parts.push('mod')
   if (e.shiftKey) parts.push('shift')
   if (e.altKey) parts.push('alt')
-  if (e.ctrlKey) parts.push('ctrl')
+  // Raw Ctrl is a distinct modifier only on macOS (e.g. ^A in terminal emulators).
+  if (mac && e.ctrlKey) parts.push('ctrl')
   parts.push(k)
   return parts.join('+')
 }
@@ -32,7 +37,7 @@ export function isPrintableChord(e: KeyLike): boolean {
   return e.key.length === 1
 }
 
-const SYMBOL: Record<string, string> = {
+const MAC_SYMBOL: Record<string, string> = {
   mod: '⌘',
   shift: '⇧',
   alt: '⌥',
@@ -44,10 +49,26 @@ const SYMBOL: Record<string, string> = {
   ' ': 'Space',
 }
 
-// Pretty-print a binding for display: 'mod+shift+t' -> '⌘⇧T'.
-export function formatBinding(b: string): string {
+const WIN_SYMBOL: Record<string, string> = {
+  mod: 'Ctrl',
+  shift: 'Shift',
+  alt: 'Alt',
+  ctrl: 'Ctrl',
+  arrowright: '→',
+  arrowleft: '←',
+  arrowup: '↑',
+  arrowdown: '↓',
+  ' ': 'Space',
+}
+
+// Pretty-print a binding for display.
+// macOS:          'mod+shift+t' → '⌘⇧T'
+// Windows/Linux:  'mod+shift+t' → 'Ctrl+Shift+T'
+export function formatBinding(b: string, mac = isMac): string {
+  const sym = mac ? MAC_SYMBOL : WIN_SYMBOL
+  const sep = mac ? '' : '+'
   return b
     .split('+')
-    .map((p) => SYMBOL[p] ?? (p.length === 1 ? p.toUpperCase() : p[0].toUpperCase() + p.slice(1)))
-    .join('')
+    .map((p) => sym[p] ?? (p.length === 1 ? p.toUpperCase() : p[0].toUpperCase() + p.slice(1)))
+    .join(sep)
 }

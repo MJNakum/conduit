@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Download ssh-client</title>
+  <style>
+    :root {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #8b949e;
+      --card: #161b22; --border: #30363d; --accent: #2f81f7; --accent-fg: #fff;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #ffffff; --fg: #1f2328; --muted: #656d76;
+        --card: #f6f8fa; --border: #d0d7de; --accent: #0969da; --accent-fg: #fff;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      display: flex; flex-direction: column; align-items: center;
+      padding: 8vh 20px 40px;
+    }
+    h1 { font-size: 2rem; margin: 0 0 6px; }
+    .tagline { color: var(--muted); margin: 0 0 32px; text-align: center; }
+    .primary {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: var(--accent); color: var(--accent-fg); text-decoration: none;
+      font-weight: 600; font-size: 1.05rem; padding: 14px 26px; border-radius: 10px;
+      border: none; cursor: pointer;
+    }
+    .primary[aria-disabled="true"] { opacity: .55; pointer-events: none; }
+    .sub { color: var(--muted); font-size: .82rem; margin-top: 10px; min-height: 1.2em; }
+    .others { margin-top: 22px; display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+    .others a { color: var(--accent); text-decoration: none; font-size: .9rem; }
+    .others a:hover { text-decoration: underline; }
+    .note {
+      margin-top: 44px; max-width: 560px; width: 100%;
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      padding: 18px 20px;
+    }
+    .note h2 { font-size: .95rem; margin: 0 0 8px; }
+    .note p { margin: 0 0 8px; color: var(--muted); font-size: .88rem; }
+    .note code {
+      background: rgba(127,127,127,.15); padding: 1px 6px; border-radius: 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em;
+    }
+    footer { margin-top: 40px; color: var(--muted); font-size: .82rem; }
+    footer a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <h1>ssh-client</h1>
+  <p class="tagline">A modern, local-first SSH client. Fast, no account required.</p>
+
+  <a class="primary" id="download" href="#" aria-disabled="true">Loading latest release…</a>
+  <div class="sub" id="sub"></div>
+
+  <div class="others" id="others"></div>
+
+  <div class="note">
+    <h2>Installing an unsigned build</h2>
+    <p><strong>Windows:</strong> Windows Defender SmartScreen may warn about an unknown
+      publisher. Click <em>More info</em> &rarr; <em>Run anyway</em>.</p>
+    <p><strong>macOS:</strong> right-click the app and choose <em>Open</em>, or run
+      <code>xattr -dr com.apple.quarantine /Applications/ssh-client.app</code>.</p>
+  </div>
+
+  <footer>
+    All builds live on <a id="releases" href="https://github.com/MJNakum/ssh-client/releases">GitHub Releases</a>.
+  </footer>
+
+  <script>
+    const REPO = 'MJNakum/ssh-client';
+
+    // Match the platform to the asset naming Tauri produces.
+    function pickAsset(assets, os) {
+      const by = (re) => assets.find((a) => re.test(a.name));
+      if (os === 'mac') return by(/\.dmg$/i) || by(/\.app\.tar\.gz$/i);
+      if (os === 'windows') return by(/-setup\.exe$/i) || by(/\.msi$/i) || by(/\.exe$/i);
+      return null;
+    }
+
+    function detectOS() {
+      const p = (navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();
+      const ua = navigator.userAgent.toLowerCase();
+      if (p.includes('win') || ua.includes('windows')) return 'windows';
+      if (p.includes('mac') || ua.includes('mac os')) return 'mac';
+      return 'other';
+    }
+
+    const LABEL = { mac: 'macOS', windows: 'Windows' };
+
+    async function init() {
+      const os = detectOS();
+      const btn = document.getElementById('download');
+      const sub = document.getElementById('sub');
+      const others = document.getElementById('others');
+      try {
+        const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+          headers: { Accept: 'application/vnd.github+json' },
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const rel = await res.json();
+        const assets = rel.assets || [];
+
+        const primary = os !== 'other' ? pickAsset(assets, os) : null;
+        if (primary) {
+          btn.href = primary.browser_download_url;
+          btn.textContent = `Download for ${LABEL[os]}`;
+          btn.removeAttribute('aria-disabled');
+          sub.textContent = `${rel.tag_name} · ${(primary.size / 1e6).toFixed(1)} MB`;
+        } else {
+          btn.textContent = 'See all downloads';
+          btn.href = rel.html_url;
+          btn.removeAttribute('aria-disabled');
+          sub.textContent = `Latest release: ${rel.tag_name}`;
+        }
+
+        // Offer the other platform(s) as secondary links.
+        for (const other of ['mac', 'windows']) {
+          if (other === os) continue;
+          const a = pickAsset(assets, other);
+          if (!a) continue;
+          const link = document.createElement('a');
+          link.href = a.browser_download_url;
+          link.textContent = `Download for ${LABEL[other]}`;
+          others.appendChild(link);
+        }
+      } catch (e) {
+        btn.textContent = 'View releases';
+        btn.href = `https://github.com/${REPO}/releases/latest`;
+        btn.removeAttribute('aria-disabled');
+        sub.textContent = 'Could not load the latest release automatically.';
+      }
+    }
+    init();
+  </script>
+</body>
+</html>

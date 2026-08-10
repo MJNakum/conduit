@@ -3,7 +3,7 @@
 // handlers (they need app state) and dispatches via matchEvent(); the Settings
 // panel edits bindings via set/reset. 'mod' = Cmd on macOS.
 import { eventToBinding, formatBinding } from './keys'
-export { eventToBinding, formatBinding, isPrintableChord } from './keys'
+export { eventToBinding, formatBinding, isPrintableChord, isMac } from './keys'
 
 export type ActionId =
   | 'palette'

@@ -2,23 +2,39 @@
 import assert from 'node:assert/strict'
 import { eventToBinding, formatBinding, isPrintableChord } from './keys.ts'
 
-// Modifiers normalize in fixed order regardless of how the event reports them.
-assert.equal(eventToBinding({ key: 'T', metaKey: true, shiftKey: true }), 'mod+shift+t')
-assert.equal(eventToBinding({ key: 'k', metaKey: true }), 'mod+k')
-assert.equal(eventToBinding({ key: ',', metaKey: true }), 'mod+,')
-assert.equal(eventToBinding({ key: 'ArrowRight', metaKey: true, shiftKey: true }), 'mod+shift+arrowright')
+// ── macOS behaviour (mac = true) ──────────────────────────────────────────────
+
+// Cmd (metaKey) → 'mod'; modifiers normalize in fixed order.
+assert.equal(eventToBinding({ key: 'T', metaKey: true, shiftKey: true }, true), 'mod+shift+t')
+assert.equal(eventToBinding({ key: 'k', metaKey: true }, true), 'mod+k')
+assert.equal(eventToBinding({ key: ',', metaKey: true }, true), 'mod+,')
+assert.equal(eventToBinding({ key: 'ArrowRight', metaKey: true, shiftKey: true }, true), 'mod+shift+arrowright')
 
 // Bare modifier presses produce no binding.
-assert.equal(eventToBinding({ key: 'Meta', metaKey: true }), null)
-assert.equal(eventToBinding({ key: 'Shift', shiftKey: true }), null)
+assert.equal(eventToBinding({ key: 'Meta', metaKey: true }, true), null)
+assert.equal(eventToBinding({ key: 'Shift', shiftKey: true }, true), null)
 
-// Pretty-print maps to platform glyphs.
-assert.equal(formatBinding('mod+k'), '⌘K')
-assert.equal(formatBinding('mod+shift+t'), '⌘⇧T')
-assert.equal(formatBinding('mod+shift+arrowright'), '⌘⇧→')
-assert.equal(formatBinding('mod+1'), '⌘1')
+// Pretty-print uses macOS glyphs, no separator.
+assert.equal(formatBinding('mod+k', true), '⌘K')
+assert.equal(formatBinding('mod+shift+t', true), '⌘⇧T')
+assert.equal(formatBinding('mod+shift+arrowright', true), '⌘⇧→')
+assert.equal(formatBinding('mod+1', true), '⌘1')
 
-// Printable chords (would type a character) must never be stolen from a field.
+// ── Windows/Linux behaviour (mac = false) ────────────────────────────────────
+
+// Ctrl (ctrlKey) → 'mod'.
+assert.equal(eventToBinding({ key: 'k', ctrlKey: true }, false), 'mod+k')
+assert.equal(eventToBinding({ key: 'T', ctrlKey: true, shiftKey: true }, false), 'mod+shift+t')
+assert.equal(eventToBinding({ key: ',', ctrlKey: true }, false), 'mod+,')
+
+// Pretty-print uses text labels with '+' separator.
+assert.equal(formatBinding('mod+k', false), 'Ctrl+K')
+assert.equal(formatBinding('mod+shift+t', false), 'Ctrl+Shift+T')
+assert.equal(formatBinding('mod+shift+arrowright', false), 'Ctrl+Shift+→')
+assert.equal(formatBinding('mod+1', false), 'Ctrl+1')
+
+// ── Printable chord detection (platform-independent) ─────────────────────────
+
 assert.equal(isPrintableChord({ key: '?', shiftKey: true }), true) // ? types
 assert.equal(isPrintableChord({ key: 'a' }), true)
 assert.equal(isPrintableChord({ key: ' ' }), true) // space types
