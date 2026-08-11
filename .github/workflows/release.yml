@@ -1,7 +1,9 @@
 name: Release
 
-# Build signed bundles for macOS + Windows and attach them to a GitHub Release
+# Build bundles for macOS + Windows + Linux and attach them to a GitHub Release
 # whenever a v* tag is pushed. Also emits latest.json for the in-app updater.
+# Linux emits .deb (for apt) and .AppImage on ubuntu-22.04 (older glibc =
+# widest compatibility).
 on:
   push:
     tags:
@@ -20,6 +22,9 @@ jobs:
             args: '--target universal-apple-darwin'
           - platform: windows-latest
             args: '--bundles nsis'
+          # Linux: .deb (apt) + .AppImage. 22.04 keeps glibc old for reach.
+          - platform: ubuntu-22.04
+            args: '--bundles deb,appimage'
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +50,14 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
+      - name: Install Linux build deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
+            libayatana-appindicator3-dev libxdo-dev libssl-dev patchelf
+
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
@@ -58,7 +71,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'ssh-client ${{ github.ref_name }}'
+          releaseName: 'Conduit ${{ github.ref_name }}'
           releaseBody: 'Download the installer for your platform below. Installers are unsigned — see the download page for the one-time click-through.'
           releaseDraft: true
           prerelease: false
