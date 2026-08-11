@@ -20,6 +20,11 @@
   --amber: 38 92% 55%;
   --violet: 265 70% 66%;
   --radius: 8px;
+  /* Motion system — one source for duration + easing. prefers-reduced-motion
+     kill-switch at the bottom of this file neutralizes all of it. */
+  --dur-fast: 110ms;
+  --dur: 180ms;
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
 }
 
 /* Light theme — applied when the root carries data-theme="light" (set by
@@ -81,4 +86,47 @@ body {
 }
 .xterm .xterm-helper-textarea:focus-visible {
   outline: none;
+}
+
+/* ---- Global interaction motion ----
+   Smooth every interactive control app-wide without touching each component.
+   Component-scoped `transition` rules (higher specificity) still win where a
+   component defines its own. Only cheap, compositable properties here. */
+button,
+a,
+input,
+select,
+textarea,
+[role='button'],
+[role='tab'],
+[role='switch'],
+.side-item,
+.tab,
+.themebtn {
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease),
+    opacity var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+/* Subtle press feedback — GPU-only transform, no layout cost. xterm's helper
+   textarea is not a button, so it's untouched. */
+button:not(:disabled):active,
+[role='button']:active {
+  transform: translateY(0.5px) scale(0.99);
+}
+
+/* Accessibility: honor the OS "reduce motion" setting everywhere at once. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

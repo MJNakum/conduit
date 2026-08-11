@@ -27,6 +27,7 @@
   import BroadcastBar from './lib/BroadcastBar.svelte'
   import ShortcutsOverlay from './lib/ShortcutsOverlay.svelte'
   import DialogHost from './lib/DialogHost.svelte'
+  import Splash from './lib/Splash.svelte'
   import { Radio } from '@lucide/svelte'
   import { settings, applyAppTheme, setAppTheme, type AppTheme } from './lib/theme.svelte'
   import { matchEvent, bindingOf, formatBinding, isPrintableChord, type ActionId } from './lib/keymap.svelte'
@@ -57,6 +58,7 @@
     type LogPayload,
   } from './lib/state.svelte'
 
+  let showSplash = $state(true)
   let paletteOpen = $state(false)
   let helpOpen = $state(false)
   // Which home-view section is showing (only when no terminal tab is active).
@@ -361,6 +363,9 @@
   {/if}
   <DialogHost />
   <Toaster />
+  {#if showSplash}
+    <Splash done={() => (showSplash = false)} />
+  {/if}
 </main>
 
 <style>
