@@ -534,6 +534,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "conduit"
+version = "0.2.0"
+dependencies = [
+ "block2",
+ "keyring",
+ "objc2",
+ "objc2-foundation",
+ "objc2-local-authentication",
+ "russh",
+ "russh-sftp",
+ "serde",
+ "serde_json",
+ "ssh-key",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-process",
+ "tauri-plugin-updater",
+ "tokio",
+ "windows 0.61.3",
+ "windows-future 0.2.1",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4262,29 +4285,6 @@ dependencies = [
  "poly1305",
  "ssh-encoding",
  "zeroize",
-]
-
-[[package]]
-name = "ssh-client"
-version = "0.1.0"
-dependencies = [
- "block2",
- "keyring",
- "objc2",
- "objc2-foundation",
- "objc2-local-authentication",
- "russh",
- "russh-sftp",
- "serde",
- "serde_json",
- "ssh-key",
- "tauri",
- "tauri-build",
- "tauri-plugin-process",
- "tauri-plugin-updater",
- "tokio",
- "windows 0.61.3",
- "windows-future 0.2.1",
 ]
 
 [[package]]
