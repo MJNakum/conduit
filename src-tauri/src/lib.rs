@@ -12,6 +12,30 @@ mod ssh;
 mod sshconfig;
 mod telnet;
 
+/// Open a URL in the user's default browser. Every launcher below receives the
+/// URL as a single CreateProcess/exec argument — none go through a shell, so
+/// shell metacharacters are inert (macOS `open`, Linux `xdg-open`, and Windows
+/// `explorer` which hands the URL to the default protocol handler; notably NOT
+/// `cmd /C start`, which would interpret `& | ^ < > %`). Restricted to http(s)
+/// with no control/whitespace chars as defense in depth.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("refusing non-http(s) url".into());
+    }
+    if url.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return Err("refusing url with control/whitespace characters".into());
+    }
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut cmd = std::process::Command::new("explorer");
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let mut cmd = std::process::Command::new("xdg-open");
+    cmd.arg(&url).spawn().map_err(|e| format!("open url: {e}"))?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[allow(unused_mut)]
@@ -72,7 +96,8 @@ pub fn run() {
             sftp::sftp_download,
             sftp::sftp_upload,
             sftp::sftp_close,
-            auth::vault_authenticate
+            auth::vault_authenticate,
+            open_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
