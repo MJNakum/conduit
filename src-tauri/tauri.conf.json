@@ -37,7 +37,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRENUNBNjJEMzI1NDk1QzUKUldURmxWUXlMYVpjVGNCaUVoOFpOVklkZER5ZDJ0VjZFOEVaK3AxWENLNlZicEF3ZGQ1TUFOTVEK",
       "endpoints": [
-        "https://github.com/MJNakum/ssh-client/releases/latest/download/latest.json"
+        "https://github.com/MJNakum/conduit/releases/latest/download/latest.json"
       ]
     }
   }
