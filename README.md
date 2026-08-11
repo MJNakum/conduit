@@ -1,18 +1,35 @@
-# ssh-client
+# Conduit
 
-A modern, local-first SSH client for macOS and Windows. Fast startup, low memory,
-no account required. Inspired by mtPuTTY's multi-tab session management and Termius's
-modern feature set.
+A modern, local-first SSH client for macOS, Windows, and Linux. Fast startup, low
+memory, no account required. Inspired by mtPuTTY's multi-tab session management and
+Termius's modern feature set.
 
 Built with [Tauri](https://tauri.app) (Rust backend) + Svelte 5 + xterm.js. SSH and
 PTY run in Rust via [`russh`](https://github.com/Eugeny/russh); the webview is
 presentation only.
 
-## Download
+## Install
 
-Get the latest build from the **[download page](https://mjnakum.github.io/ssh-client/)**,
-or grab an installer directly from
-**[GitHub Releases](https://github.com/MJNakum/ssh-client/releases/latest)**:
+### Linux (Debian / Ubuntu) — apt
+
+One-time setup adds Conduit's signed apt repository, then it updates like any package:
+
+```sh
+curl -fsSL https://mjnakum.github.io/conduit-apt/pubkey.asc \
+  | sudo gpg --dearmor -o /usr/share/keyrings/conduit.gpg
+echo "deb [signed-by=/usr/share/keyrings/conduit.gpg] https://mjnakum.github.io/conduit-apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/conduit.list
+sudo apt update && sudo apt install conduit
+```
+
+After that, new versions arrive with `sudo apt upgrade`. (Currently amd64 only.)
+Prefer a single file? Grab the `.AppImage` or `.deb` from
+[Releases](https://github.com/MJNakum/conduit/releases/latest).
+
+### macOS / Windows
+
+Get the latest from the **[download page](https://mjnakum.github.io/conduit/)** or
+**[GitHub Releases](https://github.com/MJNakum/conduit/releases/latest)**:
 
 - **macOS** — `.dmg` (universal: Apple Silicon + Intel)
 - **Windows** — `-setup.exe` (NSIS) or `.msi`
@@ -20,13 +37,13 @@ or grab an installer directly from
 The app updates itself: it checks for new releases on launch, and you can trigger a
 check from **Settings → About**.
 
-### Installing an unsigned build
+#### Installing an unsigned build
 
-Builds are currently unsigned, so the OS shows a first-run warning:
+macOS/Windows builds are currently unsigned, so the OS shows a first-run warning:
 
 - **Windows** — on the SmartScreen prompt, click *More info* → *Run anyway*.
 - **macOS** — right-click the app and choose *Open*, or run
-  `xattr -dr com.apple.quarantine /Applications/ssh-client.app`.
+  `xattr -dr com.apple.quarantine /Applications/Conduit.app`.
 
 ## Features
 
@@ -50,12 +67,16 @@ cargo test          # Rust tests (run in src-tauri/)
 
 ## Releasing
 
-1. Bump `version` in `package.json` and `src-tauri/tauri.conf.json`.
-2. Push a `v*` tag (e.g. `git tag v0.1.1 && git push origin v0.1.1`).
-3. The **Release** workflow builds macOS + Windows bundles, signs the updater
+1. Bump `version` in `package.json`, `src-tauri/tauri.conf.json`, and
+   `src-tauri/Cargo.toml`.
+2. Push a `v*` tag (e.g. `git tag v0.2.0 && git push origin v0.2.0`).
+3. The **Release** workflow builds macOS + Windows + Linux bundles, signs the updater
    artifacts, and creates a **draft** GitHub Release with `latest.json`.
 4. Review and **publish** the draft — the download page and in-app updater read the
    latest *published* release.
+5. Run the **Publish APT** workflow in
+   [`conduit-apt`](https://github.com/MJNakum/conduit-apt) (or let it fire
+   automatically) to push the new `.deb` to the apt repository.
 
 The updater signing keypair is generated with `pnpm tauri signer generate`; the
 private key and its password live in the `TAURI_SIGNING_PRIVATE_KEY` /
