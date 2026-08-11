@@ -1,0 +1,16 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Conduit">
+  <defs>
+    <linearGradient id="bg" x1="100" y1="100" x2="924" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0E1A2B"/>
+      <stop offset="1" stop-color="#0B1220"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="410" y1="348" x2="628" y2="676" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2DD4BF"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+  </defs>
+  <!-- Apple icon grid: 824x824 squircle centered in 1024 with transparent margin. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <path d="M410 348 L628 468 L410 588" stroke="url(#accent)" stroke-width="60" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="429" y="624" width="180" height="52" rx="26" fill="url(#accent)"/>
+</svg>
