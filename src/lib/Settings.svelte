@@ -5,7 +5,7 @@
   import Appearance from './Appearance.svelte'
   import Shortcuts from './Shortcuts.svelte'
   import { checkForUpdates, updateState } from './updates.svelte'
-  import { Palette, Keyboard, Info } from '@lucide/svelte'
+  import { Palette, Keyboard, Info, SlidersHorizontal } from '@lucide/svelte'
 
   let { tab = $bindable('appearance') }: { tab?: 'appearance' | 'shortcuts' | 'about' } = $props()
 
@@ -37,7 +37,11 @@
   const openLink = (url: string) => invoke('open_url', { url })
 </script>
 
-<div class="settings">
+<div class="wrap">
+  <header>
+    <h1><SlidersHorizontal size={18} /> Settings</h1>
+  </header>
+  <div class="split">
   <nav class="tabs" aria-label="Settings sections">
     <button class:active={tab === 'appearance'} onclick={() => (tab = 'appearance')}><Palette size={15} /> Appearance</button>
     <button class:active={tab === 'shortcuts'} onclick={() => (tab = 'shortcuts')}><Keyboard size={15} /> Shortcuts</button>
@@ -85,22 +89,44 @@
       </div>
     {/if}
   </div>
+  </div>
 </div>
 
 <style>
-  .settings {
+  /* Same shell as History.svelte so pages stay consistent. */
+  .wrap {
     height: 100%;
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     overflow: hidden;
   }
-  .tabs {
+  header {
     flex: none;
-    width: 176px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  h1 {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0;
+    font-size: 16px;
+  }
+  .split {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(280px, 360px) 1fr;
+  }
+  .tabs {
     display: flex;
     flex-direction: column;
     gap: 2px;
     padding: 16px 10px;
+    overflow: auto;
     border-right: 1px solid hsl(var(--border));
   }
   .tabs button {
@@ -127,7 +153,7 @@
     font-weight: 600;
   }
   .content {
-    flex: 1;
+    min-width: 0;
     overflow: auto;
     padding: 22px 24px;
   }

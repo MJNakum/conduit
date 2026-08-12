@@ -3,6 +3,7 @@
   import { listen } from '@tauri-apps/api/event'
   import {
     Terminal as TerminalIcon,
+    House,
     Server,
     KeyRound,
     Zap,
@@ -222,7 +223,7 @@
       data-roving-item
       onclick={() => activate('home')}
     >
-      <TerminalIcon size={15} /> <span>Sessions</span>
+      <House size={15} /> <span>Home</span>
     </button>
     {#each ui.tabs as tab (tab.key)}
       {@const host = tabHost(tab)}
