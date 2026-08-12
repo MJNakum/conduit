@@ -218,15 +218,6 @@
   <!-- TAB BAR — dot = status only; the thin top rule is the host's accent color -->
   <nav class="tabbar" aria-label="Open sessions" use:region={'tabbar'} use:roving={{ orientation: 'horizontal' }}>
     <button
-      class="collapse"
-      data-roving-item
-      aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      aria-pressed={sidebarCollapsed}
-      onclick={toggleSidebar}
-    >
-      {#if sidebarCollapsed}<PanelLeft size={16} />{:else}<PanelLeftClose size={16} />{/if}
-    </button>
-    <button
       class="tab pinned"
       class:active={ui.active === 'home'}
       data-roving-item
@@ -331,11 +322,21 @@
           {/each}
         {/if}
       </div>
-      <button class="vault" onclick={lockVault} title="Lock the vault">
-        <Lock size={14} color="hsl(var(--primary))" /> Vault unlocked
-        <span class="mono kbd">{formatBinding(bindingOf('lockVault'))}</span>
-      </button>
+      <div class="side-foot">
+        <button class="vault" onclick={lockVault} title="Lock the vault">
+          <Lock size={14} color="hsl(var(--primary))" /> Vault unlocked
+          <span class="mono kbd">{formatBinding(bindingOf('lockVault'))}</span>
+        </button>
+        <button class="collapse" aria-label="Collapse sidebar" title="Collapse sidebar" onclick={toggleSidebar}>
+          <PanelLeftClose size={16} />
+        </button>
+      </div>
     </aside>
+    {#if sidebarCollapsed}
+      <button class="expand" aria-label="Expand sidebar" title="Expand sidebar" onclick={toggleSidebar}>
+        <PanelLeft size={16} />
+      </button>
+    {/if}
 
     <!-- MAIN -->
     <div class="main" use:region={'content'}>
@@ -495,6 +496,7 @@
     flex: 1;
     min-height: 0;
     display: flex;
+    position: relative;
   }
   .sidebar {
     width: 236px;
@@ -510,19 +512,52 @@
     width: 0;
     border-right: none;
   }
+  .side-foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px 8px;
+  }
+  /* vault sits in the footer row next to the collapse button */
+  .side-foot .vault {
+    margin: 0;
+    width: auto;
+    flex: 1;
+    min-width: 0;
+  }
   .collapse {
-    width: 28px;
-    height: 28px;
+    flex: none;
+    width: 32px;
+    height: 32px;
     display: grid;
     place-items: center;
-    align-self: center;
-    border-radius: 6px;
-    background: none;
+    border-radius: 8px;
+    background: hsl(var(--muted));
     border: none;
     color: hsl(var(--muted-foreground));
     cursor: pointer;
   }
   .collapse:hover {
+    background: hsl(var(--border));
+    color: hsl(var(--foreground));
+  }
+  /* Shown only when collapsed so the panel can be reopened. */
+  .expand {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    z-index: 5;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+  }
+  .expand:hover {
     background: hsl(var(--muted));
     color: hsl(var(--foreground));
   }
