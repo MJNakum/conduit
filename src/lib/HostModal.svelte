@@ -47,7 +47,7 @@
 </script>
 
 <div class="backdrop" onclick={onclose} role="presentation">
-  <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-modal="true" use:trapFocus={{ onclose }}>
+  <div class="panel" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-modal="true" use:trapFocus={{ onclose }}>
     <div class="mh">
       <Pencil size={15} />
       {host.name ? `Edit host — ${host.name}` : 'New host'}
@@ -182,35 +182,42 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
-    display: grid;
-    place-items: start center;
-    padding-top: 9vh;
+    display: flex;
+    justify-content: flex-end;
     z-index: 60;
   }
-  .modal {
-    width: 560px;
-    max-width: 92vw;
+  /* Right-docked slide-in panel. The keyframe is neutralized by the global
+     prefers-reduced-motion rule in app.css. */
+  .panel {
+    width: min(680px, 94vw);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
     background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+    border-left: 1px solid hsl(var(--border));
+    box-shadow: -24px 0 64px rgba(0, 0, 0, 0.5);
+    animation: slidein var(--dur) var(--ease);
+  }
+  @keyframes slidein {
+    from {
+      transform: translateX(100%);
+    }
   }
   .mh {
     display: flex;
     align-items: center;
     gap: 9px;
-    padding: 14px 18px;
+    padding: 18px 26px;
     border-bottom: 1px solid hsl(var(--border));
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
   }
   .mbody {
-    padding: 14px 18px 18px;
+    flex: 1;
+    padding: 22px 26px 26px;
     display: flex;
     flex-direction: column;
-    gap: 11px;
-    max-height: 64vh;
+    gap: 16px;
     overflow: auto;
   }
 
@@ -263,21 +270,6 @@
   .field > label {
     font-size: 11.5px;
     color: hsl(var(--muted-foreground));
-  }
-  .field input,
-  .field select {
-    background: hsl(var(--muted));
-    border: 1px solid hsl(var(--border));
-    border-radius: 7px;
-    padding: 8px 10px;
-    color: inherit;
-    outline: none;
-    font-size: 13px;
-    font-family: inherit;
-  }
-  .field input:focus,
-  .field select:focus {
-    border-color: hsl(var(--ring) / 0.6);
   }
   .grid {
     display: grid;
@@ -358,15 +350,8 @@
     gap: 8px;
     margin-top: 6px;
   }
-  .jrow select {
+  .jrow :global(.sel) {
     flex: 1;
-    background: hsl(var(--muted));
-    border: 1px solid hsl(var(--border));
-    border-radius: 7px;
-    padding: 8px 10px;
-    color: inherit;
-    font-size: 13px;
-    font-family: inherit;
   }
   .hop {
     width: 12px;
@@ -407,7 +392,7 @@
     color: hsl(var(--foreground));
   }
   .mfoot {
-    padding: 13px 18px;
+    padding: 16px 26px;
     border-top: 1px solid hsl(var(--border));
     display: flex;
     justify-content: flex-end;
