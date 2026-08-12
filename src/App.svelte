@@ -11,7 +11,6 @@
     ChevronRight,
     Lock,
     SlidersHorizontal,
-    Plus,
     X,
     PanelLeft,
     PanelLeftClose,
@@ -248,9 +247,6 @@
         ><X size={14} /></span>
       </button>
     {/each}
-    <button class="plus" aria-label="New tab" data-roving-item onclick={newTab}>
-      <Plus size={15} />
-    </button>
   </nav>
 
   <div class="body">
@@ -475,20 +471,6 @@
   .close:hover {
     opacity: 1;
     background: hsl(var(--border));
-  }
-  .plus {
-    width: 28px;
-    height: 28px;
-    display: grid;
-    place-items: center;
-    border-radius: 6px;
-    background: none;
-    border: none;
-    color: hsl(var(--muted-foreground));
-    cursor: pointer;
-  }
-  .plus:hover {
-    background: hsl(var(--muted));
   }
 
   /* ---- body / sidebar ---- */
