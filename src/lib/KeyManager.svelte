@@ -4,6 +4,7 @@
   import { toast } from './toast.svelte'
   import { trapFocus } from './actions/trapFocus'
   import { confirmDialog } from './dialog.svelte'
+  import Select from './ui/Select.svelte'
 
   let mode = $state<'none' | 'generate' | 'import'>('none')
   let busy = $state(false)
@@ -135,11 +136,12 @@
           <div class="field"><label for="g-name">Name</label><input id="g-name" bind:value={gName} placeholder="work-laptop" /></div>
           <div class="field">
             <label for="g-type">Type</label>
-            <select id="g-type" bind:value={gType}>
-              <option value="ed25519">ed25519 (recommended)</option>
-              <option value="rsa">RSA 4096</option>
-              <option value="ecdsa">ECDSA P-256</option>
-            </select>
+            <Select id="g-type" value={gType} onchange={(v) => (gType = v as typeof gType)}
+              options={[
+                { value: 'ed25519', label: 'ed25519 (recommended)' },
+                { value: 'rsa', label: 'RSA 4096' },
+                { value: 'ecdsa', label: 'ECDSA P-256' },
+              ]} />
           </div>
         </div>
         <div class="mfoot">
@@ -350,23 +352,8 @@
     font-size: 11.5px;
     color: hsl(var(--muted-foreground));
   }
-  .field input,
-  .field select,
   .field textarea {
-    background: hsl(var(--muted));
-    border: 1px solid hsl(var(--border));
-    border-radius: 7px;
-    padding: 8px 10px;
-    color: inherit;
-    outline: none;
-    font-size: 13px;
-    font-family: inherit;
     resize: vertical;
-  }
-  .field input:focus,
-  .field select:focus,
-  .field textarea:focus {
-    border-color: hsl(var(--ring) / 0.6);
   }
   .mfoot {
     padding: 13px 18px;

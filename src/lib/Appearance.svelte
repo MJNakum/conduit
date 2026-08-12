@@ -13,6 +13,7 @@
     type AppTheme,
   } from './theme.svelte'
   import { toast } from './toast.svelte'
+  import Select from './ui/Select.svelte'
 
   const clone = (s: Scheme): Scheme => JSON.parse(JSON.stringify(s))
   const isBuiltin = (name: string) => BUILTINS.some((b) => b.name === name)
@@ -92,9 +93,8 @@
     <div class="grid3">
       <div class="field">
         <label for="a-def">Default terminal scheme</label>
-        <select id="a-def" bind:value={settings.defaultScheme} onchange={saveDefaults}>
-          {#each allSchemes() as s (s.name)}<option value={s.name}>{s.name}</option>{/each}
-        </select>
+        <Select id="a-def" bind:value={settings.defaultScheme} onchange={saveDefaults}
+          options={allSchemes().map((s) => ({ value: s.name, label: s.name }))} />
       </div>
       <div class="field">
         <label for="a-font">Default font</label>
@@ -116,9 +116,8 @@
     <div class="editrow">
       <div class="field grow">
         <label for="a-edit">Editing</label>
-        <select id="a-edit" value={editName} onchange={(e) => loadEdit((e.currentTarget as HTMLSelectElement).value)}>
-          {#each allSchemes() as s (s.name)}<option value={s.name}>{s.name}{s.builtin ? ' (built-in)' : ''}</option>{/each}
-        </select>
+        <Select id="a-edit" value={editName} onchange={loadEdit}
+          options={allSchemes().map((s) => ({ value: s.name, label: s.name + (s.builtin ? ' (built-in)' : '') }))} />
       </div>
       <div class="acts">
         {#if isCustom}<button class="btn danger" onclick={del}><Trash2 size={13} /> Delete</button>{/if}
@@ -198,23 +197,8 @@
     font-size: 11.5px;
     color: hsl(var(--muted-foreground));
   }
-  input,
-  select,
   textarea {
-    background: hsl(var(--muted));
-    border: 1px solid hsl(var(--border));
-    border-radius: 7px;
-    padding: 8px 10px;
-    color: inherit;
-    outline: none;
-    font-size: 13px;
-    font-family: inherit;
     resize: vertical;
-  }
-  input:focus,
-  select:focus,
-  textarea:focus {
-    border-color: hsl(var(--ring) / 0.6);
   }
   input[type='color'] {
     padding: 2px;

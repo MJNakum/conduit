@@ -125,7 +125,8 @@
   <div class="seg"><button class="active">All Hosts</button></div>
   <div class="search">
     <Search size={14} color="hsl(var(--muted-foreground))" />
-    <input bind:this={searchEl} bind:value={filter} placeholder="Search hosts…   /" />
+    <input bind:this={searchEl} bind:value={filter} placeholder="Search hosts" />
+    {#if !filter}<kbd class="slash">/</kbd>{/if}
   </div>
   <div class="spacer"></div>
   <div class="seg density">
@@ -388,26 +389,38 @@
   }
   .search {
     flex: 1;
-    max-width: 320px;
+    max-width: 300px;
     display: flex;
     align-items: center;
     gap: 8px;
     background: hsl(var(--muted));
     border: 1px solid transparent;
     border-radius: 7px;
-    padding: 6px 10px;
+    padding: 3px 8px 3px 10px;
   }
   .search:focus-within {
     border-color: hsl(var(--ring) / 0.5);
   }
   .search input {
     flex: 1;
+    min-width: 0;
     background: none;
     border: none;
     outline: none;
+    padding: 0;
     color: inherit;
     font-size: 12.5px;
     font-family: inherit;
+  }
+  .search .slash {
+    flex: none;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+    border: 1px solid hsl(var(--border));
+    border-radius: 4px;
+    padding: 0 5px;
+    line-height: 16px;
   }
   .spacer {
     flex: 1;

@@ -5,6 +5,7 @@
   import Appearance from './Appearance.svelte'
   import Shortcuts from './Shortcuts.svelte'
   import { checkForUpdates, updateState } from './updates.svelte'
+  import { Palette, Keyboard, Info, SlidersHorizontal } from '@lucide/svelte'
 
   let { tab = $bindable('appearance') }: { tab?: 'appearance' | 'shortcuts' | 'about' } = $props()
 
@@ -36,12 +37,16 @@
   const openLink = (url: string) => invoke('open_url', { url })
 </script>
 
-<div class="settings">
-  <div class="tabs">
-    <button class:active={tab === 'appearance'} onclick={() => (tab = 'appearance')}>Appearance</button>
-    <button class:active={tab === 'shortcuts'} onclick={() => (tab = 'shortcuts')}>Shortcuts</button>
-    <button class:active={tab === 'about'} onclick={() => (tab = 'about')}>About</button>
-  </div>
+<div class="wrap">
+  <header>
+    <h1><SlidersHorizontal size={18} /> Settings</h1>
+  </header>
+  <div class="split">
+  <nav class="tabs" aria-label="Settings sections">
+    <button class:active={tab === 'appearance'} onclick={() => (tab = 'appearance')}><Palette size={15} /> Appearance</button>
+    <button class:active={tab === 'shortcuts'} onclick={() => (tab = 'shortcuts')}><Keyboard size={15} /> Shortcuts</button>
+    <button class:active={tab === 'about'} onclick={() => (tab = 'about')}><Info size={15} /> About</button>
+  </nav>
   <div class="content">
     {#if tab === 'appearance'}
       <Appearance />
@@ -84,41 +89,73 @@
       </div>
     {/if}
   </div>
+  </div>
 </div>
 
 <style>
-  .settings {
+  /* Same shell as History.svelte so pages stay consistent. */
+  .wrap {
     height: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
-  .tabs {
+  header {
     flex: none;
     display: flex;
-    gap: 4px;
-    padding: 12px 16px 0;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
     border-bottom: 1px solid hsl(var(--border));
   }
+  h1 {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0;
+    font-size: 16px;
+  }
+  .split {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 200px 1fr;
+  }
+  .tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 16px 10px;
+    overflow: auto;
+    border-right: 1px solid hsl(var(--border));
+  }
   .tabs button {
-    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    text-align: left;
+    padding: 8px 11px;
     border: none;
+    border-radius: 7px;
     background: none;
     color: hsl(var(--muted-foreground));
     font: inherit;
     font-size: 13px;
     cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
+  }
+  .tabs button:hover {
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
   }
   .tabs button.active {
     color: hsl(var(--foreground));
-    border-bottom-color: hsl(var(--primary));
+    background: hsl(var(--muted));
+    font-weight: 600;
   }
   .content {
-    flex: 1;
+    min-width: 0;
     overflow: auto;
-    padding: 18px 16px;
+    padding: 22px 24px;
   }
   .about {
     display: flex;

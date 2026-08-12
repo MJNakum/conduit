@@ -12,6 +12,7 @@
   } from './state.svelte'
   import { toast } from './toast.svelte'
   import { trapFocus } from './actions/trapFocus'
+  import Select from './ui/Select.svelte'
 
   let editing = $state<Forward | null>(null)
 
@@ -97,19 +98,18 @@
           <div class="field"><label for="ff-name">Name</label><input id="ff-name" bind:value={editing.name} placeholder="db tunnel" /></div>
           <div class="field">
             <label for="ff-host">Host</label>
-            <select id="ff-host" bind:value={editing.hostId}>
-              <option value="" disabled>Select a host…</option>
-              {#each store.hosts as h (h.id)}<option value={h.id}>{h.name}</option>{/each}
-            </select>
+            <Select id="ff-host" bind:value={editing.hostId} placeholder="Select a host…"
+              options={store.hosts.map((h) => ({ value: h.id, label: h.name }))} />
           </div>
         </div>
         <div class="field">
           <label for="ff-kind">Type</label>
-          <select id="ff-kind" bind:value={editing.kind}>
-            <option value="local">Local (-L)</option>
-            <option value="remote">Remote (-R)</option>
-            <option value="dynamic">Dynamic / SOCKS (-D)</option>
-          </select>
+          <Select id="ff-kind" value={editing.kind} onchange={(v) => { if (editing) editing.kind = v as typeof editing.kind }}
+            options={[
+              { value: 'local', label: 'Local (-L)' },
+              { value: 'remote', label: 'Remote (-R)' },
+              { value: 'dynamic', label: 'Dynamic / SOCKS (-D)' },
+            ]} />
           <p class="help">{kindHelp[editing.kind]}</p>
         </div>
         <div class="grid2">
@@ -164,8 +164,6 @@
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field label { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
   .help { font-size: 11.5px; color: hsl(var(--muted-foreground)); margin: 2px 0 0; }
-  input, select { background: hsl(var(--muted)); border: 1px solid hsl(var(--border)); border-radius: 7px; padding: 8px 10px; color: inherit; outline: none; font-size: 13px; font-family: inherit; }
-  input:focus, select:focus { border-color: hsl(var(--ring) / 0.6); }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
   .mfoot { padding: 13px 18px; border-top: 1px solid hsl(var(--border)); display: flex; justify-content: flex-end; gap: 8px; }
   .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: none; border-radius: 7px; background: hsl(var(--muted)); color: inherit; font-size: 13px; font-family: inherit; cursor: pointer; }

@@ -4,6 +4,7 @@
   import { allSchemes } from './theme.svelte'
   import { toast } from './toast.svelte'
   import { trapFocus } from './actions/trapFocus'
+  import Select from './ui/Select.svelte'
 
   let { host, onclose }: { host: Host; onclose: () => void } = $props()
 
@@ -46,7 +47,7 @@
 </script>
 
 <div class="backdrop" onclick={onclose} role="presentation">
-  <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-modal="true" use:trapFocus={{ onclose }}>
+  <div class="panel" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-modal="true" use:trapFocus={{ onclose }}>
     <div class="mh">
       <Pencil size={15} />
       {host.name ? `Edit host — ${host.name}` : 'New host'}
@@ -67,10 +68,8 @@
         <div class="field col2"><label for="f-name">Label</label><input id="f-name" bind:value={draft.name} placeholder="my server" /></div>
         <div class="field">
           <label for="f-proto">Protocol</label>
-          <select id="f-proto" bind:value={draft.protocol}>
-            <option value="ssh">SSH</option>
-            <option value="telnet">Telnet</option>
-          </select>
+          <Select id="f-proto" value={draft.protocol} onchange={(v) => (draft.protocol = v as typeof draft.protocol)}
+            options={[{ value: 'ssh', label: 'SSH' }, { value: 'telnet', label: 'Telnet' }]} />
         </div>
       </div>
       <div class="grid">
@@ -111,20 +110,17 @@
         <div class="grid">
           <div class="field">
             <label for="f-auth">Method</label>
-            <select id="f-auth" bind:value={draft.auth}>
-              <option value="password">Password</option>
-              <option value="key">Key</option>
-            </select>
+            <Select id="f-auth" value={draft.auth} onchange={(v) => (draft.auth = v as typeof draft.auth)}
+              options={[{ value: 'password', label: 'Password' }, { value: 'key', label: 'Key' }]} />
           </div>
           {#if draft.auth === 'key'}
             <div class="field">
               <label for="f-keysel">Key</label>
-              <select id="f-keysel" bind:value={keyChoice}>
-                {#each keysStore.keys as k (k.id)}
-                  <option value={k.id}>{k.name} ({k.key_type})</option>
-                {/each}
-                <option value="">Use file path…</option>
-              </select>
+              <Select id="f-keysel" bind:value={keyChoice}
+                options={[
+                  ...keysStore.keys.map((k) => ({ value: k.id, label: `${k.name} (${k.key_type})` })),
+                  { value: '', label: 'Use file path…' },
+                ]} />
             </div>
           {/if}
         </div>
@@ -142,11 +138,8 @@
           {#each draft.jumps as jid, i (i)}
             <div class="jrow">
               <span class="muted mono hop">{i + 1}</span>
-              <select value={jid} onchange={(e) => (draft.jumps[i] = (e.currentTarget as HTMLSelectElement).value)}>
-                {#each otherHosts as h (h.id)}
-                  <option value={h.id}>{h.name} ({h.user}@{h.hostname})</option>
-                {/each}
-              </select>
+              <Select value={jid} onchange={(v) => (draft.jumps[i] = v)}
+                options={otherHosts.map((h) => ({ value: h.id, label: `${h.name} (${h.user}@${h.hostname})` }))} />
               <button type="button" class="jx" aria-label="Remove jump" onclick={() => (draft.jumps = draft.jumps.filter((_, k) => k !== i))}><X size={14} /></button>
             </div>
           {/each}
@@ -160,12 +153,8 @@
       <div class="grid">
         <div class="field col2">
           <label for="f-scheme">Theme</label>
-          <select id="f-scheme" value={draft.scheme ?? ''} onchange={(e) => (draft.scheme = (e.currentTarget as HTMLSelectElement).value || null)}>
-            <option value="">Global default</option>
-            {#each allSchemes() as s (s.name)}
-              <option value={s.name}>{s.name}</option>
-            {/each}
-          </select>
+          <Select id="f-scheme" value={draft.scheme ?? ''} onchange={(v) => (draft.scheme = v || null)}
+            options={[{ value: '', label: 'Global default' }, ...allSchemes().map((s) => ({ value: s.name, label: s.name }))]} />
         </div>
         <div class="field">
           <label for="f-fsize">Font size</label>
@@ -193,35 +182,42 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
-    display: grid;
-    place-items: start center;
-    padding-top: 9vh;
+    display: flex;
+    justify-content: flex-end;
     z-index: 60;
   }
-  .modal {
-    width: 560px;
-    max-width: 92vw;
+  /* Right-docked slide-in panel. The keyframe is neutralized by the global
+     prefers-reduced-motion rule in app.css. */
+  .panel {
+    width: min(680px, 94vw);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
     background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+    border-left: 1px solid hsl(var(--border));
+    box-shadow: -24px 0 64px rgba(0, 0, 0, 0.5);
+    animation: slidein var(--dur) var(--ease);
+  }
+  @keyframes slidein {
+    from {
+      transform: translateX(100%);
+    }
   }
   .mh {
     display: flex;
     align-items: center;
     gap: 9px;
-    padding: 14px 18px;
+    padding: 18px 26px;
     border-bottom: 1px solid hsl(var(--border));
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
   }
   .mbody {
-    padding: 14px 18px 18px;
+    flex: 1;
+    padding: 22px 26px 26px;
     display: flex;
     flex-direction: column;
-    gap: 11px;
-    max-height: 64vh;
+    gap: 16px;
     overflow: auto;
   }
 
@@ -274,21 +270,6 @@
   .field > label {
     font-size: 11.5px;
     color: hsl(var(--muted-foreground));
-  }
-  .field input,
-  .field select {
-    background: hsl(var(--muted));
-    border: 1px solid hsl(var(--border));
-    border-radius: 7px;
-    padding: 8px 10px;
-    color: inherit;
-    outline: none;
-    font-size: 13px;
-    font-family: inherit;
-  }
-  .field input:focus,
-  .field select:focus {
-    border-color: hsl(var(--ring) / 0.6);
   }
   .grid {
     display: grid;
@@ -369,15 +350,8 @@
     gap: 8px;
     margin-top: 6px;
   }
-  .jrow select {
+  .jrow :global(.sel) {
     flex: 1;
-    background: hsl(var(--muted));
-    border: 1px solid hsl(var(--border));
-    border-radius: 7px;
-    padding: 8px 10px;
-    color: inherit;
-    font-size: 13px;
-    font-family: inherit;
   }
   .hop {
     width: 12px;
@@ -418,7 +392,7 @@
     color: hsl(var(--foreground));
   }
   .mfoot {
-    padding: 13px 18px;
+    padding: 16px 26px;
     border-top: 1px solid hsl(var(--border));
     display: flex;
     justify-content: flex-end;

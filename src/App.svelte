@@ -3,6 +3,7 @@
   import { listen } from '@tauri-apps/api/event'
   import {
     Terminal as TerminalIcon,
+    House,
     Server,
     KeyRound,
     Zap,
@@ -11,8 +12,9 @@
     ChevronRight,
     Lock,
     SlidersHorizontal,
-    Plus,
     X,
+    PanelLeft,
+    PanelLeftClose,
   } from '@lucide/svelte'
   import HostList from './lib/HostList.svelte'
   import TabView from './lib/TabView.svelte'
@@ -67,6 +69,13 @@
   // Which home-view section is showing (only when no terminal tab is active).
   let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards' | 'history' | 'settings'>('hosts')
   let settingsTab = $state<'appearance' | 'shortcuts' | 'about'>('appearance')
+  let sidebarCollapsed = $state(localStorage.getItem('sidebarCollapsed') === '1')
+
+  function toggleSidebar() {
+    sidebarCollapsed = !sidebarCollapsed
+    localStorage.setItem('sidebarCollapsed', sidebarCollapsed ? '1' : '0')
+    activate(ui.active) // refit the terminal after the width change
+  }
 
   onMount(() => {
     applyAppTheme()
@@ -155,7 +164,7 @@
       case 'palette': paletteOpen = !paletteOpen; break
       case 'settings': case 'gotoSettings': goSection('settings'); break
       case 'cycleTheme': cycleTheme(); break
-      case 'newTab': activate('home'); break
+      case 'newTab': newTab(); break
       case 'closeTab': if (ui.active !== 'home') closeTab(ui.active); break
       case 'nextTab': switchTab(1); break
       case 'prevTab': switchTab(-1); break
@@ -175,6 +184,12 @@
 
   async function open(h: Host) {
     openTab(h)
+    await activate(ui.active)
+  }
+
+  // Open an empty tab; the pane renders a host picker until one is chosen.
+  async function newTab() {
+    openTab(null)
     await activate(ui.active)
   }
 
@@ -208,7 +223,7 @@
       data-roving-item
       onclick={() => activate('home')}
     >
-      <TerminalIcon size={15} /> <span>Sessions</span>
+      <House size={15} /> <span>Home</span>
     </button>
     {#each ui.tabs as tab (tab.key)}
       {@const host = tabHost(tab)}
@@ -233,84 +248,100 @@
         ><X size={14} /></span>
       </button>
     {/each}
-    <button class="plus" aria-label="New tab" data-roving-item onclick={() => activate('home')}>
-      <Plus size={15} />
-    </button>
   </nav>
 
   <div class="body">
     <!-- SIDEBAR — section switcher + vault pill (local-first trust anchor) -->
-    <aside class="sidebar" use:region={'sidebar'}>
+    <aside class="sidebar" class:collapsed={sidebarCollapsed} use:region={'sidebar'}>
       <div class="side-scroll" role="navigation" aria-label="Sections" use:roving={{ orientation: 'vertical' }}>
         <button
           class="side-item"
           class:active={ui.active === 'home' && section === 'hosts' && ui.group === null}
           data-roving-item
+          title="Hosts"
           onclick={() => { section = 'hosts'; ui.group = null; activate('home') }}
         >
-          <Server size={15} /> Hosts
+          <Server size={15} /> <span class="lbl">Hosts</span>
         </button>
         <button
           class="side-item"
           class:active={ui.active === 'home' && section === 'keys'}
           data-roving-item
+          title="Keys"
           onclick={() => { section = 'keys'; activate('home') }}
         >
-          <KeyRound size={15} /> Keys
+          <KeyRound size={15} /> <span class="lbl">Keys</span>
         </button>
         <button
           class="side-item"
           class:active={ui.active === 'home' && section === 'snippets'}
           data-roving-item
+          title="Snippets"
           onclick={() => { section = 'snippets'; activate('home') }}
         >
-          <Zap size={15} /> Snippets
+          <Zap size={15} /> <span class="lbl">Snippets</span>
         </button>
         <button
           class="side-item"
           class:active={ui.active === 'home' && section === 'forwards'}
           data-roving-item
+          title="Port Forwards"
           onclick={() => { section = 'forwards'; activate('home') }}
         >
-          <ArrowRightLeft size={15} /> Port Forwards
+          <ArrowRightLeft size={15} /> <span class="lbl">Port Forwards</span>
         </button>
         <button
           class="side-item"
           class:active={ui.active === 'home' && section === 'settings'}
           data-roving-item
+          title="Settings"
           onclick={() => goSection('settings')}
         >
-          <SlidersHorizontal size={15} /> Settings
+          <SlidersHorizontal size={15} /> <span class="lbl">Settings</span>
         </button>
         <button
           class="side-item"
           class:active={ui.active === 'home' && section === 'history'}
           data-roving-item
+          title="History"
           onclick={() => goSection('history')}
         >
-          <History size={15} /> History
+          <History size={15} /> <span class="lbl">History</span>
         </button>
-        <div class="side-head">Groups</div>
-        {#if groupNodes().length === 0}
-          <div class="side-item soon" aria-disabled="true">Set a host's Group to build the tree</div>
-        {:else}
-          {#each groupNodes() as g (g.path)}
-            <button
-              class="side-item"
-              style:padding-left={`${9 + g.depth * 14}px`}
-              class:active={ui.active === 'home' && section === 'hosts' && ui.group === g.path}
-              data-roving-item
-              onclick={() => { section = 'hosts'; ui.group = g.path; activate('home') }}
-            >
-              <ChevronRight size={15} /> {g.label}
-            </button>
-          {/each}
-        {/if}
+        <div class="groups">
+          <div class="side-head">Groups</div>
+          {#if groupNodes().length === 0}
+            <div class="side-item soon" aria-disabled="true">Set a host's Group to build the tree</div>
+          {:else}
+            {#each groupNodes() as g (g.path)}
+              <button
+                class="side-item"
+                style:padding-left={`${9 + g.depth * 14}px`}
+                class:active={ui.active === 'home' && section === 'hosts' && ui.group === g.path}
+                data-roving-item
+                title={g.label}
+                onclick={() => { section = 'hosts'; ui.group = g.path; activate('home') }}
+              >
+                <ChevronRight size={15} /> <span class="lbl">{g.label}</span>
+              </button>
+            {/each}
+          {/if}
+        </div>
       </div>
-      <button class="vault" onclick={lockVault} title="Lock the vault">
-        <Lock size={14} color="hsl(var(--primary))" /> Vault unlocked
-        <span class="mono kbd">{formatBinding(bindingOf('lockVault'))}</span>
-      </button>
+      <div class="side-foot">
+        <button class="vault" onclick={lockVault} title="Lock the vault">
+          <Lock size={14} color="hsl(var(--primary))" /> <span class="lbl">Vault unlocked</span>
+          <span class="mono kbd">{formatBinding(bindingOf('lockVault'))}</span>
+        </button>
+        <button
+          class="collapse"
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onclick={toggleSidebar}
+        >
+          {#if sidebarCollapsed}<PanelLeft size={16} />{:else}<PanelLeftClose size={16} />{/if}
+        </button>
+      </div>
     </aside>
 
     <!-- MAIN -->
@@ -451,26 +482,13 @@
     opacity: 1;
     background: hsl(var(--border));
   }
-  .plus {
-    width: 28px;
-    height: 28px;
-    display: grid;
-    place-items: center;
-    border-radius: 6px;
-    background: none;
-    border: none;
-    color: hsl(var(--muted-foreground));
-    cursor: pointer;
-  }
-  .plus:hover {
-    background: hsl(var(--muted));
-  }
 
   /* ---- body / sidebar ---- */
   .body {
     flex: 1;
     min-height: 0;
     display: flex;
+    position: relative;
   }
   .sidebar {
     width: 236px;
@@ -479,6 +497,66 @@
     border-right: 1px solid hsl(var(--border));
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    transition: width var(--dur) var(--ease);
+  }
+  /* Collapsed = icon rail: icons only, labels hidden, native title tooltips. */
+  .sidebar.collapsed {
+    width: 52px;
+  }
+  .sidebar.collapsed .lbl,
+  .sidebar.collapsed .kbd,
+  .sidebar.collapsed .side-head,
+  .sidebar.collapsed .groups {
+    display: none;
+  }
+  .sidebar.collapsed .side-item,
+  .sidebar.collapsed .vault {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .sidebar.collapsed .side-scroll {
+    padding: 8px 6px;
+  }
+  .sidebar.collapsed .side-foot {
+    flex-direction: column;
+    padding: 0 6px 8px;
+  }
+  .sidebar.collapsed .side-foot .vault {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+  .side-foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px 8px;
+  }
+  /* vault sits in the footer row next to the collapse button */
+  .side-foot .vault {
+    margin: 0;
+    width: auto;
+    flex: 1;
+    min-width: 0;
+  }
+  .collapse {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: hsl(var(--muted));
+    border: none;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+  }
+  .collapse:hover {
+    background: hsl(var(--border));
+    color: hsl(var(--foreground));
   }
   .side-scroll {
     flex: 1;

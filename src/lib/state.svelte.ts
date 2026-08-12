@@ -386,7 +386,8 @@ export const ui = $state({
   group: null as string | null,
 })
 
-export function openTab(host: Host): Tab {
+// host = null opens an empty tab with the in-pane host picker (Pane.svelte).
+export function openTab(host: Host | null): Tab {
   const pane = newPane(host)
   const tab: Tab = { key: crypto.randomUUID(), layout: 'single', panes: [pane], active: pane.key }
   ui.tabs.push(tab)
