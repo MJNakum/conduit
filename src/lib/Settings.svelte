@@ -119,7 +119,7 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(280px, 360px) 1fr;
+    grid-template-columns: 200px 1fr;
   }
   .tabs {
     display: flex;
