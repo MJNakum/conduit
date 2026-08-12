@@ -58,7 +58,9 @@ body,
 }
 
 body {
-  color-scheme: dark;
+  /* color-scheme is set dynamically on <html> by applyAppTheme (dark/light/system);
+     don't hardcode it here or it fights the theme and forces native controls
+     (checkboxes, date pickers, the Linux <select> popup) to the wrong scheme. */
   background: hsl(var(--background));
   color: hsl(var(--foreground));
   font-family: -apple-system, system-ui, "Inter", sans-serif;
@@ -86,6 +88,46 @@ body {
 }
 .xterm .xterm-helper-textarea:focus-visible {
   outline: none;
+}
+
+/* ---- Form control baseline ----
+   Single source of truth for native controls so every checkbox/input/textarea
+   is themed and prominent without each component redefining it. Component-scoped
+   rules (higher specificity) still override where a component needs a variant. */
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: hsl(var(--primary));
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+input,
+textarea {
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  padding: 8px 10px;
+  color: hsl(var(--foreground));
+  outline: none;
+  font-family: inherit;
+  font-size: 13px;
+}
+input[type='checkbox'],
+input[type='radio'],
+input[type='color'],
+input[type='range'] {
+  /* these size themselves; don't inherit the text-field box */
+  background: none;
+  border: none;
+  padding: 0;
+}
+input:focus,
+textarea:focus {
+  border-color: hsl(var(--ring) / 0.6);
+}
+input::placeholder,
+textarea::placeholder {
+  color: hsl(var(--muted-foreground));
 }
 
 /* ---- Global interaction motion ----

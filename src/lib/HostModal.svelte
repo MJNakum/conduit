@@ -4,6 +4,7 @@
   import { allSchemes } from './theme.svelte'
   import { toast } from './toast.svelte'
   import { trapFocus } from './actions/trapFocus'
+  import Select from './ui/Select.svelte'
 
   let { host, onclose }: { host: Host; onclose: () => void } = $props()
 
@@ -67,10 +68,8 @@
         <div class="field col2"><label for="f-name">Label</label><input id="f-name" bind:value={draft.name} placeholder="my server" /></div>
         <div class="field">
           <label for="f-proto">Protocol</label>
-          <select id="f-proto" bind:value={draft.protocol}>
-            <option value="ssh">SSH</option>
-            <option value="telnet">Telnet</option>
-          </select>
+          <Select id="f-proto" value={draft.protocol} onchange={(v) => (draft.protocol = v as typeof draft.protocol)}
+            options={[{ value: 'ssh', label: 'SSH' }, { value: 'telnet', label: 'Telnet' }]} />
         </div>
       </div>
       <div class="grid">
@@ -111,20 +110,17 @@
         <div class="grid">
           <div class="field">
             <label for="f-auth">Method</label>
-            <select id="f-auth" bind:value={draft.auth}>
-              <option value="password">Password</option>
-              <option value="key">Key</option>
-            </select>
+            <Select id="f-auth" value={draft.auth} onchange={(v) => (draft.auth = v as typeof draft.auth)}
+              options={[{ value: 'password', label: 'Password' }, { value: 'key', label: 'Key' }]} />
           </div>
           {#if draft.auth === 'key'}
             <div class="field">
               <label for="f-keysel">Key</label>
-              <select id="f-keysel" bind:value={keyChoice}>
-                {#each keysStore.keys as k (k.id)}
-                  <option value={k.id}>{k.name} ({k.key_type})</option>
-                {/each}
-                <option value="">Use file path…</option>
-              </select>
+              <Select id="f-keysel" bind:value={keyChoice}
+                options={[
+                  ...keysStore.keys.map((k) => ({ value: k.id, label: `${k.name} (${k.key_type})` })),
+                  { value: '', label: 'Use file path…' },
+                ]} />
             </div>
           {/if}
         </div>
@@ -142,11 +138,8 @@
           {#each draft.jumps as jid, i (i)}
             <div class="jrow">
               <span class="muted mono hop">{i + 1}</span>
-              <select value={jid} onchange={(e) => (draft.jumps[i] = (e.currentTarget as HTMLSelectElement).value)}>
-                {#each otherHosts as h (h.id)}
-                  <option value={h.id}>{h.name} ({h.user}@{h.hostname})</option>
-                {/each}
-              </select>
+              <Select value={jid} onchange={(v) => (draft.jumps[i] = v)}
+                options={otherHosts.map((h) => ({ value: h.id, label: `${h.name} (${h.user}@${h.hostname})` }))} />
               <button type="button" class="jx" aria-label="Remove jump" onclick={() => (draft.jumps = draft.jumps.filter((_, k) => k !== i))}><X size={14} /></button>
             </div>
           {/each}
@@ -160,12 +153,8 @@
       <div class="grid">
         <div class="field col2">
           <label for="f-scheme">Theme</label>
-          <select id="f-scheme" value={draft.scheme ?? ''} onchange={(e) => (draft.scheme = (e.currentTarget as HTMLSelectElement).value || null)}>
-            <option value="">Global default</option>
-            {#each allSchemes() as s (s.name)}
-              <option value={s.name}>{s.name}</option>
-            {/each}
-          </select>
+          <Select id="f-scheme" value={draft.scheme ?? ''} onchange={(v) => (draft.scheme = v || null)}
+            options={[{ value: '', label: 'Global default' }, ...allSchemes().map((s) => ({ value: s.name, label: s.name }))]} />
         </div>
         <div class="field">
           <label for="f-fsize">Font size</label>
