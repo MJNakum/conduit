@@ -13,6 +13,8 @@
     SlidersHorizontal,
     Plus,
     X,
+    PanelLeft,
+    PanelLeftClose,
   } from '@lucide/svelte'
   import HostList from './lib/HostList.svelte'
   import TabView from './lib/TabView.svelte'
@@ -67,6 +69,13 @@
   // Which home-view section is showing (only when no terminal tab is active).
   let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards' | 'history' | 'settings'>('hosts')
   let settingsTab = $state<'appearance' | 'shortcuts' | 'about'>('appearance')
+  let sidebarCollapsed = $state(localStorage.getItem('sidebarCollapsed') === '1')
+
+  function toggleSidebar() {
+    sidebarCollapsed = !sidebarCollapsed
+    localStorage.setItem('sidebarCollapsed', sidebarCollapsed ? '1' : '0')
+    activate(ui.active) // refit the terminal after the width change
+  }
 
   onMount(() => {
     applyAppTheme()
@@ -155,7 +164,7 @@
       case 'palette': paletteOpen = !paletteOpen; break
       case 'settings': case 'gotoSettings': goSection('settings'); break
       case 'cycleTheme': cycleTheme(); break
-      case 'newTab': activate('home'); break
+      case 'newTab': newTab(); break
       case 'closeTab': if (ui.active !== 'home') closeTab(ui.active); break
       case 'nextTab': switchTab(1); break
       case 'prevTab': switchTab(-1); break
@@ -175,6 +184,12 @@
 
   async function open(h: Host) {
     openTab(h)
+    await activate(ui.active)
+  }
+
+  // Open an empty tab; the pane renders a host picker until one is chosen.
+  async function newTab() {
+    openTab(null)
     await activate(ui.active)
   }
 
@@ -202,6 +217,15 @@
 <main>
   <!-- TAB BAR — dot = status only; the thin top rule is the host's accent color -->
   <nav class="tabbar" aria-label="Open sessions" use:region={'tabbar'} use:roving={{ orientation: 'horizontal' }}>
+    <button
+      class="collapse"
+      data-roving-item
+      aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      aria-pressed={sidebarCollapsed}
+      onclick={toggleSidebar}
+    >
+      {#if sidebarCollapsed}<PanelLeft size={16} />{:else}<PanelLeftClose size={16} />{/if}
+    </button>
     <button
       class="tab pinned"
       class:active={ui.active === 'home'}
@@ -233,14 +257,14 @@
         ><X size={14} /></span>
       </button>
     {/each}
-    <button class="plus" aria-label="New tab" data-roving-item onclick={() => activate('home')}>
+    <button class="plus" aria-label="New tab" data-roving-item onclick={newTab}>
       <Plus size={15} />
     </button>
   </nav>
 
   <div class="body">
     <!-- SIDEBAR — section switcher + vault pill (local-first trust anchor) -->
-    <aside class="sidebar" use:region={'sidebar'}>
+    <aside class="sidebar" class:collapsed={sidebarCollapsed} use:region={'sidebar'}>
       <div class="side-scroll" role="navigation" aria-label="Sections" use:roving={{ orientation: 'vertical' }}>
         <button
           class="side-item"
@@ -479,6 +503,28 @@
     border-right: 1px solid hsl(var(--border));
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    transition: width var(--dur) var(--ease);
+  }
+  .sidebar.collapsed {
+    width: 0;
+    border-right: none;
+  }
+  .collapse {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    align-self: center;
+    border-radius: 6px;
+    background: none;
+    border: none;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+  }
+  .collapse:hover {
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
   }
   .side-scroll {
     flex: 1;
