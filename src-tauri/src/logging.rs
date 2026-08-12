@@ -18,15 +18,33 @@ pub fn logs_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+fn sanitize(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect()
+}
+
 /// Open a fresh append log for a session, named `<sanitized-host>-<unixsecs>.log`.
 pub fn open_log(app: &AppHandle, name: &str) -> Option<File> {
     let dir = logs_dir(app).ok()?;
-    let safe: String = name
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
-        .collect();
-    let path = dir.join(format!("{safe}-{}.log", crate::knownhosts::now_secs()));
+    let path = dir.join(format!("{}-{}.log", sanitize(name), crate::knownhosts::now_secs()));
     OpenOptions::new().create(true).append(true).open(path).ok()
+}
+
+/// Save a connection log — the stepper's diagnostic trace, not terminal output —
+/// and return its bare filename so the caller can hand it to `log_reveal`.
+///
+/// Named `<host>-connect-<unixsecs>.log` rather than `<host>-<secs>-connect.log`
+/// so `logs_list`'s `<name>-<secs>` split still finds the timestamp; the file
+/// then lists alongside session logs under the host label `<host>-connect`.
+///
+/// `text` is composed in the webview from `ssh://log` lines, which carry prompt
+/// text but never an answer or a secret (CLAUDE.md), so it is safe to persist.
+#[tauri::command]
+pub fn conn_log_save(app: AppHandle, name: String, text: String) -> Result<String, String> {
+    let file = format!("{}-connect-{}.log", sanitize(&name), crate::knownhosts::now_secs());
+    fs::write(logs_dir(&app)?.join(&file), text).map_err(|e| format!("write log: {e}"))?;
+    Ok(file)
 }
 
 /// Absolute path of the logs directory (for the "reveal in file manager" action).

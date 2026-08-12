@@ -132,6 +132,7 @@ pub fn forward_delete(
 pub async fn forward_start(
     app: AppHandle,
     state: State<'_, ForwardState>,
+    ssh: State<'_, crate::ssh::SshState>,
     id: String,
 ) -> Result<(), String> {
     let cfg = read_all(&app)?
@@ -140,7 +141,7 @@ pub async fn forward_start(
         .ok_or("no such forward")?;
 
     emit(&app, &id, "starting", None);
-    let result = start_inner(&app, &state, &cfg).await;
+    let result = start_inner(&app, &state, ssh.prompts(), &cfg).await;
     match &result {
         Ok(()) => emit(&app, &id, "active", None),
         Err(e) => emit(&app, &id, "error", Some(e.clone())),
@@ -177,6 +178,7 @@ fn stop_inner(state: &ForwardState, id: &str) {
 async fn start_inner(
     app: &AppHandle,
     state: &ForwardState,
+    prompts: crate::ssh::Prompts,
     cfg: &ForwardConfig,
 ) -> Result<(), String> {
     if state.running.lock().unwrap().contains_key(&cfg.id) {
@@ -189,6 +191,11 @@ async fn start_inner(
         &cfg.id,
         &chain,
         crate::ssh::dummy_pending(),
+        // Real prompt map: a host behind a verification code still has to be
+        // able to ask, and with no pane to render into the webview falls back
+        // to its global dialog. One start = at most one challenge; cancelling
+        // fails the forward rather than retrying.
+        prompts,
         false, // non-interactive: untrusted host key => reject
         forward_target,
         true, // keepalive for long-lived tunnels

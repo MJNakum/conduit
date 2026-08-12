@@ -1,8 +1,10 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
-  import { ShieldAlert } from '@lucide/svelte'
+  import { ScrollText, ShieldAlert, ShieldCheck } from '@lucide/svelte'
   import Terminal from './Terminal.svelte'
   import Stepper from './Stepper.svelte'
+  import Challenge from './Challenge.svelte'
+  import RawLog from './RawLog.svelte'
   import { store, ui, broadcast, hostIcon, resolveJumps, type Pane } from './state.svelte'
   import { resolveScheme, xtermTheme, settings } from './theme.svelte'
   import { toast } from './toast.svelte'
@@ -16,6 +18,7 @@
   let secretVal = $state('')
   let saveSecret = $state(true)
   let hasSaved = $state(false)
+  let showRaw = $state(false)
   const Icon = $derived(pane.host ? hostIcon(pane.host) : null)
   // Track the most-recently-active connected session so snippet "Run" has a target.
   $effect(() => {
@@ -48,12 +51,22 @@
     return 'hsl(var(--muted-foreground))'
   }
 
-  async function connect() {
-    if (!pane.host) return
+  // Begin a fresh attempt: the log that just failed moves aside rather than
+  // being dropped, so it's still readable after a retry behaves differently.
+  function startAttempt() {
     pane.error = ''
     pane.phase = 'connecting'
+    if (pane.connLog.length) pane.prevLog = pane.connLog
     pane.connLog = []
     pane.activeStep = 'connecting'
+    pane.kb = null
+    pane.sawMfa = false
+    showRaw = false
+  }
+
+  async function connect() {
+    if (!pane.host) return
+    startAttempt()
     try {
       if (isTelnet) {
         pane.sessionId = await invoke<string>('telnet_connect', {
@@ -106,17 +119,18 @@
     pane.sessionId = null
     pane.phase = ''
     pane.error = ''
+    pane.prevLog = pane.connLog
     pane.connLog = []
     pane.activeStep = 'connecting'
+    pane.kb = null
+    pane.sawMfa = false
+    showRaw = false
   }
 
   // Reuse the backend-retained credentials to restart the same session id.
   function reconnect() {
     if (!pane.sessionId) return
-    pane.error = ''
-    pane.phase = 'connecting'
-    pane.connLog = []
-    pane.activeStep = 'connecting'
+    startAttempt()
     invoke('ssh_reconnect', { id: pane.sessionId })
   }
 
@@ -129,7 +143,8 @@
     }
   })
 
-  const overlay = $derived(pane.phase !== 'connected')
+  const overlay = $derived(pane.phase !== 'connected' || showRaw)
+  const failed = $derived(pane.phase === 'error' || pane.phase === 'disconnected')
   // Amber outline when this connected pane is a live broadcast target (design §9).
   const broadcasting = $derived(
     broadcast.on &&
@@ -192,6 +207,20 @@
         {#if Icon}<Icon size={14} />{/if}
         <span>{pane.host.name}</span>
         <span class="muted mono">{pane.host.user}@{pane.host.hostname}</span>
+        <span class="spacer"></span>
+        <!-- The trace stays reachable after a successful connect: the case you
+             most need it for is a session that authenticated and then dropped.
+             Hidden while a prompt is up, since that takes over the overlay. -->
+        {#if !pane.kb && pane.phase !== 'hostkey'}
+          <button
+            class="headbtn"
+            onclick={() => (showRaw = !showRaw)}
+            title="Connection log"
+            aria-label="Connection log"
+          >
+            <ScrollText size={13} />
+          </button>
+        {/if}
       </div>
       <div class="term">
         <Terminal
@@ -224,20 +253,49 @@
                 </div>
               {/if}
             </div>
+          {:else if pane.kb}
+            <!-- Keyboard-interactive challenge, in place as a step rather than a
+                 modal (design-spec §5): this is where a verification code is
+                 entered. Keyed so a re-ask arrives with empty fields. -->
+            <div class="hostkey">
+              <h3><ShieldCheck size={18} /> {pane.kb.name.trim() || 'Verification required'}</h3>
+              <p class="muted small mono">{pane.kb.label}</p>
+              {#key pane.kb.prompt_id}
+                <Challenge prompt={pane.kb} autofocus />
+              {/key}
+            </div>
           {:else}
             <h3>{#if Icon}<Icon size={18} />{/if} {pane.host.name}</h3>
-            <Stepper
-              phase={pane.phase}
-              error={pane.error}
-              method={pane.method}
-              protocol={pane.host.protocol ?? 'ssh'}
-              log={pane.connLog}
-              activeStep={pane.activeStep}
-            />
-            {#if pane.phase === 'disconnected'}
-              <button class="btn primary" onclick={reconnect}>Reconnect</button>
-            {:else if pane.phase === 'error'}
-              <button class="btn primary" onclick={reset}>Try again</button>
+            {#if showRaw}
+              <RawLog
+                log={pane.connLog}
+                previous={pane.prevLog}
+                host={`${pane.host.user}@${pane.host.hostname}:${pane.host.port}`}
+                name={pane.host.name}
+                onclose={() => (showRaw = false)}
+              />
+            {:else}
+              <Stepper
+                phase={pane.phase}
+                error={pane.error}
+                method={pane.method}
+                protocol={pane.host.protocol ?? 'ssh'}
+                mfa={pane.sawMfa}
+                log={pane.connLog}
+                activeStep={pane.activeStep}
+              />
+            {/if}
+            {#if failed}
+              <div class="actions">
+                {#if pane.phase === 'disconnected'}
+                  <button class="btn primary" onclick={reconnect}>Reconnect</button>
+                {:else}
+                  <button class="btn primary" onclick={reset}>Try again</button>
+                {/if}
+                {#if !showRaw}
+                  <button class="btn" onclick={() => (showRaw = true)}>Raw log</button>
+                {/if}
+              </div>
             {/if}
           {/if}
         </div>
@@ -279,6 +337,25 @@
     height: 8px;
     border-radius: 50%;
     flex: none;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .headbtn {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    flex: none;
+    border: none;
+    border-radius: 5px;
+    background: none;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+  }
+  .headbtn:hover {
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
   }
   .wrap {
     position: relative;
@@ -446,6 +523,11 @@
     justify-content: center;
     gap: 0.6rem;
     margin-top: 1rem;
+  }
+  .actions {
+    display: flex;
+    justify-content: center;
+    gap: 0.6rem;
   }
   .btn.danger-btn {
     background: hsl(var(--destructive));

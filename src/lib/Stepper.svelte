@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Check, X, ChevronRight } from '@lucide/svelte'
-  import { stepsFor, stepStatus, STEP_LABEL, type Step, type LogLine } from './connsteps'
+  import { stepsFor, stepStatus, stampTime, STEP_LABEL, type Step, type LogLine } from './connsteps'
   // Driven by real ssh://state + ssh://log events — never a faked animation.
   // Each step is an accordion; opening one reveals its detailed log lines.
   let {
@@ -8,6 +8,7 @@
     error,
     method = '',
     protocol = 'ssh',
+    mfa = false,
     log = [],
     activeStep,
   }: {
@@ -15,11 +16,12 @@
     error: string
     method?: string
     protocol?: string
+    mfa?: boolean // the server issued a challenge -> the MFA step applies here
     log?: LogLine[]
     activeStep: Step
   } = $props()
 
-  const steps = $derived(stepsFor(protocol))
+  const steps = $derived(stepsFor(protocol, mfa))
   const statuses = $derived(stepStatus(steps, activeStep, phase))
 
   // The step that opens by default: the active or failed one. A user click pins
@@ -38,11 +40,6 @@
   }
 
   const label = (s: Step) => (s === 'auth' && method ? `Authenticate (${method})` : STEP_LABEL[s])
-  // HH:MM:SS.mmm — the arrival time the frontend stamped.
-  function fmt(ts: number): string {
-    const d = new Date(ts)
-    return d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0')
-  }
   const failed = $derived(phase === 'error' || phase === 'disconnected')
 </script>
 
@@ -67,7 +64,7 @@
         <div class="body">
           {#if lines.length}
             {#each lines as l, li (li)}
-              <div class="line"><span class="ts mono">{fmt(l.ts)}</span><span class="msg mono">{l.msg}</span></div>
+              <div class="line"><span class="ts mono">{stampTime(l.ts)}</span><span class="msg mono">{l.msg}</span></div>
             {/each}
           {:else}
             <div class="line empty">No detail yet.</div>

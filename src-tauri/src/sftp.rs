@@ -57,6 +57,7 @@ fn session(state: &SftpState, id: &str) -> Result<Arc<SftpSession>, String> {
 pub async fn sftp_open(
     app: AppHandle,
     state: State<'_, SftpState>,
+    ssh: State<'_, crate::ssh::SshState>,
     host_id: String,
 ) -> Result<Opened, String> {
     let id = format!("f{}", NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
@@ -66,6 +67,10 @@ pub async fn sftp_open(
         &id,
         &chain,
         crate::ssh::dummy_pending(),
+        // Real prompt map: a host behind a verification code still has to be
+        // able to ask, and with no pane to render into the webview falls back
+        // to its global dialog.
+        ssh.prompts(),
         false, // non-interactive: untrusted host key -> reject (connect once first)
         None,
         true,

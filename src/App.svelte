@@ -27,6 +27,7 @@
   import BroadcastBar from './lib/BroadcastBar.svelte'
   import ShortcutsOverlay from './lib/ShortcutsOverlay.svelte'
   import DialogHost from './lib/DialogHost.svelte'
+  import AuthPrompt from './lib/AuthPrompt.svelte'
   import Splash from './lib/Splash.svelte'
   import { Radio } from '@lucide/svelte'
   import { settings, applyAppTheme, setAppTheme, type AppTheme } from './lib/theme.svelte'
@@ -48,6 +49,7 @@
     closeTab,
     applyState,
     applyLog,
+    applyPrompt,
     activeCount,
     hostIcon,
     tabHost,
@@ -56,6 +58,7 @@
     type Tab,
     type StatePayload,
     type LogPayload,
+    type PromptPayload,
   } from './lib/state.svelte'
 
   let showSplash = $state(true)
@@ -75,6 +78,7 @@
     checkForUpdates()
     listen<StatePayload>('ssh://state', (e) => applyState(e.payload))
     listen<LogPayload>('ssh://log', (e) => applyLog(e.payload))
+    listen<PromptPayload>('ssh://prompt', (e) => applyPrompt(e.payload))
     listen<{ id: string; state: string; message?: string }>('forward://state', (e) =>
       applyForwardState(e.payload.id, e.payload.state, e.payload.message),
     )
@@ -362,6 +366,7 @@
     <LockScreen />
   {/if}
   <DialogHost />
+  <AuthPrompt />
   <Toaster />
   {#if showSplash}
     <Splash done={() => (showSplash = false)} />
