@@ -329,10 +329,11 @@ export type Pane = {
   key: string
   host: Host | null // null = empty pane awaiting a host pick
   sessionId: string | null
-  phase: string // real ssh://state: '' | connecting | hostkey | authenticating | connected | disconnected | error
+  phase: string // real ssh://state: '' | connecting | hostkey | authenticating | keyboard | connected | disconnected | error
   error: string
   method: string // auth method for the current 'authenticating' phase
   connLog: LogLine[] // detailed per-step connection log (accordion), current attempt
+  prevLog: LogLine[] // the previous attempt, kept so a retry doesn't erase the evidence
   activeStep: Step // step the connection is currently in (drives failed-step marking)
   // Host-key prompt payload (phase === 'hostkey'):
   keyHost: string // the machine being verified (a bastion mid-chain isn't the tab host)
@@ -340,6 +341,9 @@ export type Pane = {
   keyType: string
   keyChanged: boolean
   oldFingerprint: string
+  // Keyboard-interactive challenge (phase === 'keyboard'), null when not asked.
+  kb: PromptPayload | null
+  sawMfa: boolean // this host has issued a challenge -> show the MFA step
 }
 
 export type Layout = 'single' | 'split2' | 'split4'
@@ -361,12 +365,15 @@ function newPane(host: Host | null): Pane {
     error: '',
     method: '',
     connLog: [],
+    prevLog: [],
     activeStep: 'connecting',
     keyHost: '',
     fingerprint: '',
     keyType: '',
     keyChanged: false,
     oldFingerprint: '',
+    kb: null,
+    sawMfa: false,
   }
 }
 
@@ -450,11 +457,19 @@ export function applyState(p: StatePayload) {
   for (const tab of ui.tabs) {
     const pane = tab.panes.find((x) => x.sessionId === p.id)
     if (!pane) continue
-    // A fresh 'connecting' begins a new attempt — clear the previous log.
+    // A fresh 'connecting' begins a new attempt. Keep the log that just failed
+    // as `prevLog` — it's the evidence you want when a retry behaves differently.
     if (p.state === 'connecting') {
+      // Guarded: the pane also rotates optimistically when the user hits
+      // Connect, and an unguarded second rotation would swallow the log we
+      // just preserved.
+      if (pane.connLog.length) pane.prevLog = pane.connLog
       pane.connLog = []
       pane.activeStep = 'connecting'
+      pane.sawMfa = false
     }
+    // Any state event means the challenge is over (answered, or the attempt died).
+    if (p.state !== 'keyboard') pane.kb = null
     pane.phase = p.state
     pane.error = p.state === 'error' ? (p.message ?? 'error') : ''
     // On error, record the failure under whatever step is active so the
@@ -474,6 +489,51 @@ export function applyState(p: StatePayload) {
   }
 }
 
+// The ssh://prompt event payload — a keyboard-interactive challenge. `conn` is
+// a session id when a pane owns the connection, or a forward/SFTP id when
+// nothing on screen does.
+export type PromptPayload = {
+  prompt_id: string
+  conn: string
+  label: string // "user@host", names the asker in the global dialog
+  name: string
+  instruction: string
+  fields: { prompt: string; echo: boolean }[]
+}
+
+// Challenges from connections no pane owns (port forwards, SFTP). Queued rather
+// than shown at once, so two background connects can't fight over the dialog.
+export const authPrompts = $state({ queue: [] as PromptPayload[] })
+
+// Route a challenge to the pane that owns it, else to the global dialog.
+export function applyPrompt(p: PromptPayload) {
+  for (const tab of ui.tabs) {
+    const pane = tab.panes.find((x) => x.sessionId === p.conn)
+    if (!pane) continue
+    pane.kb = p
+    pane.sawMfa = true
+    pane.phase = 'keyboard'
+    pane.activeStep = 'mfa'
+    return
+  }
+  authPrompts.queue.push(p)
+}
+
+// Answer a challenge. `null` cancels, which aborts the connection's auth.
+// Answers go straight to the backend and are never stored — they're one-time.
+export function answerPrompt(promptId: string, responses: string[] | null) {
+  invoke('ssh_prompt_response', { promptId, responses })
+  authPrompts.queue = authPrompts.queue.filter((p) => p.prompt_id !== promptId)
+  for (const tab of ui.tabs) {
+    const pane = tab.panes.find((x) => x.kb?.prompt_id === promptId)
+    if (!pane) continue
+    pane.kb = null
+    // Back to waiting on the server; a further challenge re-enters 'keyboard'.
+    if (responses) pane.phase = 'authenticating'
+    return
+  }
+}
+
 // The ssh://log event payload — one detailed line, bucketed by step.
 export type LogPayload = { id: string; step: Step; msg: string }
 
@@ -483,6 +543,10 @@ export function applyLog(p: LogPayload) {
     const pane = tab.panes.find((x) => x.sessionId === p.id)
     if (!pane) continue
     pane.connLog.push({ step: p.step, ts: Date.now(), msg: p.msg })
+    // An mfa-bucketed line means a second factor was involved even when the user
+    // was never prompted (a banner, or a password challenge answered from the
+    // saved secret) — the step has to exist before activeStep can point at it.
+    if (p.step === 'mfa') pane.sawMfa = true
     pane.activeStep = p.step
     return
   }

@@ -84,6 +84,7 @@ pub fn run() {
             forwards::forward_start,
             forwards::forward_stop,
             logging::logs_dir_path,
+            logging::conn_log_save,
             logging::logs_list,
             logging::log_read,
             logging::log_reveal,
