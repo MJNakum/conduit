@@ -121,6 +121,10 @@ static NEXT_PROMPT: AtomicU64 = AtomicU64::new(1);
 /// Ceiling on auth round-trips so a server that keeps re-offering the same
 /// method can't spin forever.
 const MAX_AUTH_ATTEMPTS: usize = 10;
+/// How many times a rejected keyboard-interactive challenge may be re-offered.
+/// It's the one method whose input changes between attempts, so a mistyped or
+/// expired code deserves another go rather than a full reconnect.
+const MAX_KBD_ATTEMPTS: usize = 3;
 
 /// Real connection state, emitted on `ssh://state`. This is the source of truth
 /// for the live connection stepper.
@@ -735,7 +739,12 @@ async fn authenticate(
     };
     emit_log(app, id, "auth", format!("server offers: {}", method_list(&remaining)));
 
+    // Sticky for the whole hop: the stored secret answers at most one password
+    // challenge. If the conversation is retried the user is asked for that field
+    // too — one extra box, but it's the only way to correct a wrong saved
+    // password instead of silently burning every attempt on it.
     let mut secret_spent = false;
+    let mut kbd_attempts = 0;
     let mut tried: Vec<MethodKind> = Vec::new();
 
     for _ in 0..MAX_AUTH_ATTEMPTS {
@@ -763,6 +772,7 @@ async fn authenticate(
                 .await
                 .map_err(|e| fail(app, id, "auth", "auth error", e))?,
             MethodKind::KeyboardInteractive => {
+                kbd_attempts += 1;
                 keyboard_interactive(
                     app,
                     id,
@@ -805,6 +815,12 @@ async fn authenticate(
                     tried.clear();
                 } else {
                     emit_log(app, id, "auth", format!("{name} rejected"));
+                    // A wrong code shouldn't cost a reconnect. Retrying the
+                    // other methods would be pointless — same key, same stored
+                    // password, same answer — so only this one is re-offered.
+                    if method == MethodKind::KeyboardInteractive && kbd_attempts < MAX_KBD_ATTEMPTS {
+                        tried.retain(|m| *m != MethodKind::KeyboardInteractive);
+                    }
                 }
                 remaining = remaining_methods;
             }
