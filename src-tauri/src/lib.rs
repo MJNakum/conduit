@@ -61,6 +61,7 @@ pub fn run() {
             ssh::ssh_disconnect,
             ssh::ssh_reconnect,
             ssh::ssh_host_key_decision,
+            ssh::ssh_prompt_response,
             ssh::telnet_connect,
             hosts::hosts_list,
             hosts::host_save,
