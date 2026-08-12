@@ -35,6 +35,14 @@ keyring = { version = "3", features = ["apple-native", "windows-native"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 
+# Linux secret storage: persistent D-Bus Secret Service (GNOME Keyring / KWallet).
+# Without this feature keyring v3 silently uses an in-memory mock store, so keys
+# and saved passwords vanish on restart. crypto-rust avoids a system libssl build
+# dep. Needs a Secret Service daemon running in the session (standard on GNOME/KDE);
+# ponytail: if none is present keyring errors rather than mocking — honest > silent data loss.
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+
 # Vault lock: Touch ID / macOS password via LocalAuthentication. Thin objc2
 # framework binding; objc2/block2/objc2-foundation are already in the tree.
 [target.'cfg(target_os = "macos")'.dependencies]
