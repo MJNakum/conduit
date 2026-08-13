@@ -480,4 +480,55 @@ mod tests {
         let e = keyring::Error::PlatformFailure(Box::new(std::io::Error::other("wallet on fire")));
         assert_eq!(describe(&e), "the system keyring is not working: wallet on fire");
     }
+
+    /// The whole reported flow, with no Secret Service: what used to be a hard
+    /// failure now sets up, stores, reads back, and reports honestly.
+    ///
+    /// `KIND` and `DATA_DIR` are process-global OnceLocks, so this must be the
+    /// only test that drives a backend — the others above only call `describe`.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn no_secret_service_falls_back_to_the_file_store() {
+        std::env::set_var("CONDUIT_SECRET_BACKEND", "file");
+        let dir = std::env::temp_dir().join(format!("conduit-secrets-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _ = std::fs::remove_file(crate::filestore::path(&dir));
+        init_data_dir(dir.clone());
+
+        // Nothing set up yet: the UI is told to ask for a passphrase, and a
+        // write fails with a sentence rather than a D-Bus string.
+        let s = secret_backend_status();
+        assert_eq!(s.kind, "file");
+        assert!(s.uninitialized && !s.locked);
+        let err = secret_set("key:abc".into(), "PEM".into()).unwrap_err();
+        assert!(err.contains("locked"), "{err}");
+
+        // Set a passphrase, then the original operation succeeds.
+        secret_store_create("hunter2".into()).unwrap();
+        secret_set("key:abc".into(), "PRIVATE KEY".into()).unwrap();
+        assert_eq!(get("key:abc").as_deref(), Some("PRIVATE KEY"));
+        assert!(secret_has("key:abc".into()));
+        assert!(!secret_has("key:nope".into()));
+        assert!(secret_backend_status().kind == "file" && !secret_backend_status().locked);
+
+        // Survives a restart: drop the in-process store, and a locked store must
+        // not answer "no secret" — that is the cache-poisoning bug.
+        *store().lock().unwrap() = None;
+        cache().lock().unwrap().clear();
+        assert!(secret_backend_status().locked);
+        assert_eq!(get("key:abc"), None);
+        assert!(
+            cache().lock().unwrap().is_empty(),
+            "an unavailable store must not be memoized as 'no secret'"
+        );
+
+        // Unlocking makes it readable again — which it would not be if the
+        // earlier None had been cached.
+        secret_store_unlock("hunter2".into()).unwrap();
+        assert_eq!(get("key:abc").as_deref(), Some("PRIVATE KEY"));
+
+        secret_delete("key:abc".into()).unwrap();
+        assert_eq!(get("key:abc"), None);
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
