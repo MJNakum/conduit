@@ -133,12 +133,17 @@
     }
   }
 
-  // Drop the saved secret so the next connect prompts again.
+  // Drop the saved secret so the next connect prompts again. Deleting can fail
+  // now that a locked file store refuses writes, so don't claim it worked.
   async function forgetSecret() {
     if (!pane.host) return
-    await invoke('secret_delete', { hostId: pane.host.id })
-    hasSaved = false
-    toast('Saved password removed')
+    try {
+      await invoke('secret_delete', { hostId: pane.host.id })
+      hasSaved = false
+      toast('Saved password removed')
+    } catch (e) {
+      toast(`Could not remove the saved password: ${String(e)}`)
+    }
   }
 
   // Answer the backend's host-key prompt. Reject makes auth fail -> Error state.

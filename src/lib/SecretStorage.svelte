@@ -170,13 +170,21 @@
             system keyring is in use — nothing is copied between the two.
           </p>
         {/if}
-        <div class="acts">
-          {#if keyringOk}
+        <!--
+          Only offer a switch that can actually work. Pinning the system keyring
+          while none is running would just reproduce the original failure, so
+          that button appears only to undo an existing pin — otherwise installing
+          a provider is the answer, and detection picks it up on its own.
+        -->
+        {#if keyringOk}
+          <div class="acts">
             <button class="btn" onclick={() => switchTo('file')}>Use the encrypted file instead</button>
-          {:else}
-            <button class="btn" onclick={() => switchTo('keyring')}>Use the system keyring instead</button>
-          {/if}
-        </div>
+          </div>
+        {:else if s.pinned === 'file'}
+          <div class="acts">
+            <button class="btn" onclick={clearPin}>Go back to the system keyring</button>
+          </div>
+        {/if}
       </section>
     {/if}
   {/if}
