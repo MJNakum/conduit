@@ -1,14 +1,29 @@
 <script lang="ts">
-  import { KeyRound, Plus, Upload, Copy, Trash2, ShieldCheck } from '@lucide/svelte'
+  import { onMount } from 'svelte'
+  import { KeyRound, Plus, Upload, Copy, Trash2, ShieldCheck, ShieldAlert } from '@lucide/svelte'
   import { keysStore, generateKey, importKey, deleteKey, store, type Key } from './state.svelte'
+  import { secretsState, loadStatus, ensureUsable, storeName } from './secrets.svelte'
   import { toast } from './toast.svelte'
   import { trapFocus } from './actions/trapFocus'
   import { confirmDialog } from './dialog.svelte'
   import Select from './ui/Select.svelte'
 
+  let { onOpenStorage }: { onOpenStorage?: () => void } = $props()
+
   let mode = $state<'none' | 'generate' | 'import'>('none')
   let busy = $state(false)
   let err = $state('')
+
+  // The Keys page is a deliberate visit to credential UI, so this is a fair
+  // place to pay for the backend probe (see secrets.svelte.ts).
+  onMount(loadStatus)
+
+  const secrets = $derived(secretsState.status)
+  // Worth warning about before the user tries anything: no system keyring, or a
+  // file store that still needs a passphrase.
+  const needsAttention = $derived(
+    !!secrets && secrets.kind === 'file' && (secrets.locked || secrets.uninitialized),
+  )
 
   // generate form
   let gName = $state('')
@@ -35,38 +50,43 @@
   const installCmd = (pub: string) =>
     `mkdir -p ~/.ssh && echo '${pub.trim()}' >> ~/.ssh/authorized_keys`
 
-  async function doGenerate() {
-    if (!gName.trim()) return
+  // Private key material is written to secret storage before anything touches
+  // keys.json, so an unusable store must stop us here rather than half-create a
+  // key. Refresh the status afterwards so the banner reflects any failure.
+  async function withStorage(work: () => Promise<void>) {
     busy = true
     err = ''
     try {
-      created = await generateKey(gName.trim(), gType)
-      toast(`Key "${created.name}" generated`)
-      gName = ''
-      mode = 'none'
+      if (!(await ensureUsable())) return
+      await work()
     } catch (e) {
       err = String(e)
+      await loadStatus()
     } finally {
       busy = false
     }
   }
 
+  async function doGenerate() {
+    if (!gName.trim()) return
+    await withStorage(async () => {
+      created = await generateKey(gName.trim(), gType)
+      toast(`Key "${created.name}" generated`)
+      gName = ''
+      mode = 'none'
+    })
+  }
+
   async function doImport() {
     if (!iName.trim() || !iPem.trim()) return
-    busy = true
-    err = ''
-    try {
+    await withStorage(async () => {
       created = await importKey(iName.trim(), iPem, iPass)
       toast(`Key "${created.name}" imported`)
       iName = ''
       iPem = ''
       iPass = ''
       mode = 'none'
-    } catch (e) {
-      err = String(e)
-    } finally {
-      busy = false
-    }
+    })
   }
 
   async function remove(k: Key) {
@@ -88,9 +108,19 @@
     </div>
   </header>
 
+  {#if needsAttention}
+    <div class="notice">
+      <ShieldAlert size={15} />
+      <span>{secrets?.detail}</span>
+      {#if onOpenStorage}
+        <button class="link" onclick={onOpenStorage}>Set up secret storage</button>
+      {/if}
+    </div>
+  {/if}
+
   {#if created}
     <div class="reveal">
-      <div class="rhead"><ShieldCheck size={15} /> {created.name} created — stored in Keychain</div>
+      <div class="rhead"><ShieldCheck size={15} /> {created.name} created — stored in {storeName()}</div>
       <code class="pub mono">{created.public_key}</code>
       <div class="rrow">
         <button class="btn" onclick={() => copy(created!.public_key)}><Copy size={13} /> Copy public key</button>
@@ -100,7 +130,14 @@
     </div>
   {/if}
 
-  {#if err}<div class="err">{err}</div>{/if}
+  {#if err}
+    <div class="err">
+      <span>{err}</span>
+      {#if onOpenStorage && secrets?.linux}
+        <button class="link" onclick={onOpenStorage}>Secret storage settings</button>
+      {/if}
+    </div>
+  {/if}
 
   {#if keysStore.keys.length === 0}
     <div class="empty">
@@ -114,7 +151,7 @@
           <span class="badge mono">{k.key_type}</span>
           <span class="name">{k.name}</span>
           <span class="fp mono" title={k.fingerprint}>{k.fingerprint}</span>
-          <span class="badge kc"><ShieldCheck size={12} /> Keychain</span>
+          <span class="badge kc"><ShieldCheck size={12} /> {storeName()}</span>
           <span class="muted date">{fmtDate(k.created)}</span>
           <span class="used muted">{usedBy(k.id) || ''}{usedBy(k.id) ? ' host' + (usedBy(k.id) === 1 ? '' : 's') : ''}</span>
           <span class="row-actions">
@@ -304,9 +341,37 @@
     margin-top: 9px;
   }
   .err {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     color: hsl(var(--destructive));
     font-size: 12.5px;
     margin-bottom: 12px;
+  }
+  /* Storage is unusable but nothing has failed yet — a heads-up, not an error. */
+  .notice {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 12px;
+    padding: 9px 12px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    font-size: 12.5px;
+  }
+  .link {
+    margin-left: auto;
+    flex: none;
+    border: none;
+    background: none;
+    padding: 0;
+    color: hsl(var(--primary));
+    font: inherit;
+    font-size: 12.5px;
+    text-decoration: underline;
+    cursor: pointer;
   }
 
   /* modal — mirrors HostModal */

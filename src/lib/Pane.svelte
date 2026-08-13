@@ -6,6 +6,7 @@
   import Challenge from './Challenge.svelte'
   import RawLog from './RawLog.svelte'
   import { store, ui, broadcast, hostIcon, resolveJumps, type Pane } from './state.svelte'
+  import { secretsState, ensureUsable, storeName } from './secrets.svelte'
   import { resolveScheme, xtermTheme, settings } from './theme.svelte'
   import { toast } from './toast.svelte'
 
@@ -30,6 +31,15 @@
   const isTelnet = $derived(pane.host?.protocol === 'telnet')
   // Telnet has no client auth; SSH managed-key/saved-secret also skip the prompt.
   const promptSecret = $derived(!isTelnet && !hasSaved && !managedKey)
+
+  // Only a hint for the save checkbox. Deliberately does not fetch the status —
+  // that would force a backend probe on the connect path, and connection latency
+  // is the metric that matters. It reads as false until the user has visited the
+  // Keys or Settings page; `ensureUsable()` still does the real work at save time.
+  const storeLocked = $derived(
+    secretsState.status?.kind === 'file' &&
+      (secretsState.status.locked || secretsState.status.uninitialized),
+  )
 
   // Does the keychain already hold a password for this host? Only relevant for
   // password-auth SSH — probing key/telnet hosts would trigger a needless
@@ -83,19 +93,43 @@
         auth: pane.host.auth,
         keyId: pane.host.keyId,
         identityFile: pane.host.identityFile,
-        // Only send/save a secret when we actually prompted for one. Otherwise
+        // Only send a secret when we actually prompted for one. Otherwise
         // (managed key, telnet, or an already-saved secret) leave it null so we
         // never write a junk empty entry or re-read the keychain needlessly.
         secret: promptSecret ? secretVal : null,
-        save: promptSecret && saveSecret,
+        // Saving is done here instead, so a failure is visible — the backend
+        // had no way to report one without aborting a good connection.
+        save: false,
         jumps: resolveJumps(pane.host),
         logName: pane.host.logging ? pane.host.name : null,
       })
-      if (promptSecret && saveSecret) toast('Password saved to Keychain')
+      const toSave = promptSecret && saveSecret ? secretVal : ''
       secretVal = ''
+      // After the connect call, so a storage passphrase prompt never delays the
+      // connection itself. ponytail: this still saves before authentication has
+      // been confirmed, so a mistyped password gets stored — same as before this
+      // change. Saving on the `connected` state event is the real fix.
+      if (toSave) void saveSecretFor(pane.host.id, toSave)
     } catch (e) {
       pane.phase = 'error'
       pane.error = String(e)
+    }
+  }
+
+  // Report what actually happened. The old code toasted success unconditionally
+  // while the backend discarded the result, so on a machine with no working
+  // secret storage it claimed to have saved a password it had dropped.
+  async function saveSecretFor(hostId: string, secret: string) {
+    try {
+      if (!(await ensureUsable())) {
+        toast('Password not saved — secret storage was not unlocked')
+        return
+      }
+      await invoke('secret_set', { hostId, secret })
+      hasSaved = true
+      toast(`Password saved to ${storeName()}`)
+    } catch (e) {
+      toast(`Password not saved: ${String(e)}`)
     }
   }
 
@@ -181,7 +215,7 @@
       <form onsubmit={(e) => { e.preventDefault(); connect() }}>
         {#if !promptSecret}
           <p class="muted small">
-            {isTelnet ? 'Telnet — no authentication.' : managedKey ? 'Authenticating with a managed key.' : 'Using saved secret from Keychain.'}
+            {isTelnet ? 'Telnet — no authentication.' : managedKey ? 'Authenticating with a managed key.' : `Using saved secret from ${storeName()}.`}
             {#if hasSaved}
               <button type="button" class="linkbtn" onclick={forgetSecret}>Forget</button>
             {/if}
@@ -194,7 +228,13 @@
             bind:value={secretVal}
             autofocus
           />
-          <label class="save"><input type="checkbox" bind:checked={saveSecret} /> Save to Keychain</label>
+          <label class="save"><input type="checkbox" bind:checked={saveSecret} /> Save to {storeName()}</label>
+          {#if storeLocked}
+            <p class="muted small">
+              Secret storage is locked, so a saved password would be lost. You will be asked to
+              unlock it.
+            </p>
+          {/if}
         {/if}
         <button class="btn primary" type="submit">Connect</button>
       </form>
