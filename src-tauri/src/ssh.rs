@@ -396,9 +396,15 @@ pub async fn ssh_connect(
 ) -> Result<String, String> {
     let secret = match secret {
         Some(s) => {
+            // A failed save must not abort a connection that is otherwise fine,
+            // so this is not propagated with `?`. It is not swallowed either:
+            // the frontend confirms with `secret_has` before telling the user
+            // the password was saved.
             if save {
                 if let Some(hid) = &host_id {
-                    let _ = crate::secrets::secret_set(hid.clone(), s.clone());
+                    if let Err(e) = crate::secrets::secret_set(hid.clone(), s.clone()) {
+                        eprintln!("conduit: could not save the password for this host: {e}");
+                    }
                 }
             }
             s
@@ -541,7 +547,10 @@ fn start_session(app: AppHandle, id: String, sessions: Sessions, pending: Pendin
 /// manager doesn't own, decrypted with `hop.secret` when it carries a passphrase.
 fn load_key(hop: &Hop) -> Result<russh::keys::PrivateKey, String> {
     if let Some(kid) = &hop.key_id {
-        let pem = crate::keys::private_pem(kid).ok_or("managed key not found in keychain")?;
+        // "Not found" and "the store could not answer" look the same here, so
+        // point at both: on Linux a locked encrypted store is the likelier cause.
+        let pem = crate::keys::private_pem(kid)
+            .ok_or("could not read this key from secret storage — it may be missing, or the store may be locked")?;
         decode_secret_key(&pem, None).map_err(|e| format!("decode key: {e}"))
     } else {
         let path = hop.identity_file.as_deref().ok_or("no key selected for key auth")?;

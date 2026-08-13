@@ -1,4 +1,6 @@
 mod auth;
+#[cfg(target_os = "linux")]
+mod filestore;
 mod forwards;
 mod hosts;
 mod keys;
@@ -54,6 +56,15 @@ pub fn run() {
     }
 
     builder
+        // Resolve the app data dir once so `secrets.rs` can reach the encrypted
+        // file store from the SSH/host layers, which hold no AppHandle.
+        .setup(|app| {
+            use tauri::Manager;
+            if let Ok(dir) = app.path().app_data_dir() {
+                secrets::init_data_dir(dir);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             ssh::ssh_connect,
             ssh::ssh_write,
@@ -75,6 +86,10 @@ pub fn run() {
             secrets::secret_has,
             secrets::secret_delete,
             secrets::secrets_purge,
+            secrets::secret_backend_status,
+            secrets::secret_backend_pin,
+            secrets::secret_store_create,
+            secrets::secret_store_unlock,
             sshconfig::ssh_config_import,
             sshconfig::ssh_config_export,
             sshconfig::ssh_config_export_write,
