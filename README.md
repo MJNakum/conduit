@@ -26,6 +26,12 @@ After that, new versions arrive with `sudo apt upgrade`. (Currently amd64 only.)
 Prefer a single file? Grab the `.AppImage` or `.deb` from
 [Releases](https://github.com/MJNakum/conduit/releases/latest).
 
+**Secret storage.** Conduit keeps passwords and private keys in your desktop's
+Secret Service — GNOME Keyring, KWallet, or KeePassXC — which the `.deb`
+recommends. Sessions without one (a minimal window manager, a headless box)
+get an encrypted file instead, unlocked by a passphrase you set once. Settings
+→ Secret storage shows which is in use and how to switch.
+
 ### macOS / Windows
 
 Get the latest from the **[download page](https://mjnakum.github.io/conduit/)** or
