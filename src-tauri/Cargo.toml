@@ -39,9 +39,18 @@ tauri-plugin-process = "2"
 # Without this feature keyring v3 silently uses an in-memory mock store, so keys
 # and saved passwords vanish on restart. crypto-rust avoids a system libssl build
 # dep. Needs a Secret Service daemon running in the session (standard on GNOME/KDE);
-# ponytail: if none is present keyring errors rather than mocking — honest > silent data loss.
+# when none is present we fall back to `filestore.rs` rather than failing.
+#
+# argon2/aes-gcm/zeroize are already in the tree via ssh-key/ssh-cipher (encrypted
+# OpenSSH key support), so these are direct edges onto code the binary already
+# carries — no new compilation units, no binary growth. argon2 is pinned to
+# ssh-key's exact version (same reason as the `ssh-key` pin above) so the tree
+# never gains a duplicate copy. default-features off keeps the edge minimal.
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+argon2 = { version = "=0.6.0-rc.8", default-features = false, features = ["alloc", "zeroize"] }
+aes-gcm = { version = "0.11", default-features = false, features = ["aes", "alloc"] }
+zeroize = { version = "1", features = ["alloc"] }
 
 # Vault lock: Touch ID / macOS password via LocalAuthentication. Thin objc2
 # framework binding; objc2/block2/objc2-foundation are already in the tree.

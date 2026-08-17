@@ -68,7 +68,7 @@
   let helpOpen = $state(false)
   // Which home-view section is showing (only when no terminal tab is active).
   let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards' | 'history' | 'settings'>('hosts')
-  let settingsTab = $state<'appearance' | 'shortcuts' | 'about'>('appearance')
+  let settingsTab = $state<'appearance' | 'shortcuts' | 'storage' | 'about'>('appearance')
   let sidebarCollapsed = $state(localStorage.getItem('sidebarCollapsed') === '1')
 
   function toggleSidebar() {
@@ -348,7 +348,7 @@
     <div class="main" use:region={'content'}>
       <div class="page" class:hidden={ui.active !== 'home'}>
         {#if section === 'keys'}
-          <KeyManager />
+          <KeyManager onOpenStorage={() => { settingsTab = 'storage'; goSection('settings') }} />
         {:else if section === 'snippets'}
           <Snippets />
         {:else if section === 'forwards'}

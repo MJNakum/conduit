@@ -11,6 +11,10 @@ export type DialogRequest =
       kind: 'prompt'
       value: string
       placeholder?: string
+      /** Mask the input and stop trimming — leading/trailing spaces are part of a passphrase. */
+      password?: boolean
+      /** Add a "repeat" field; OK stays disabled until the two match. */
+      confirm?: boolean
       resolve: (value: string | null) => void
     })
 
@@ -24,10 +28,17 @@ export function confirmDialog(o: Base): Promise<boolean> {
 }
 
 // Ask for a line of text. Resolves the trimmed string on OK, or null on cancel.
-export function promptDialog(o: Base & { value?: string; placeholder?: string }): Promise<string | null> {
+export function promptDialog(
+  o: Base & { value?: string; placeholder?: string; password?: boolean; confirm?: boolean },
+): Promise<string | null> {
   return new Promise((resolve) => {
     dialogState.current = { kind: 'prompt', value: o.value ?? '', ...o, resolve }
   })
+}
+
+// Ask for a passphrase. Masked, never trimmed; `confirm` adds a repeat field.
+export function passphraseDialog(o: Base & { confirm?: boolean; placeholder?: string }) {
+  return promptDialog({ ...o, password: true })
 }
 
 // Called by DialogHost when the user answers; clears and resolves.

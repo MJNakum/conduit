@@ -4,10 +4,12 @@
   import { invoke } from '@tauri-apps/api/core'
   import Appearance from './Appearance.svelte'
   import Shortcuts from './Shortcuts.svelte'
+  import SecretStorage from './SecretStorage.svelte'
   import { checkForUpdates, updateState } from './updates.svelte'
-  import { Palette, Keyboard, Info, SlidersHorizontal } from '@lucide/svelte'
+  import { Palette, Keyboard, Info, SlidersHorizontal, ShieldCheck } from '@lucide/svelte'
 
-  let { tab = $bindable('appearance') }: { tab?: 'appearance' | 'shortcuts' | 'about' } = $props()
+  let { tab = $bindable('appearance') }: { tab?: 'appearance' | 'shortcuts' | 'storage' | 'about' } =
+    $props()
 
   let version = $state('')
   onMount(async () => {
@@ -45,6 +47,7 @@
   <nav class="tabs" aria-label="Settings sections">
     <button class:active={tab === 'appearance'} onclick={() => (tab = 'appearance')}><Palette size={15} /> Appearance</button>
     <button class:active={tab === 'shortcuts'} onclick={() => (tab = 'shortcuts')}><Keyboard size={15} /> Shortcuts</button>
+    <button class:active={tab === 'storage'} onclick={() => (tab = 'storage')}><ShieldCheck size={15} /> Secret storage</button>
     <button class:active={tab === 'about'} onclick={() => (tab = 'about')}><Info size={15} /> About</button>
   </nav>
   <div class="content">
@@ -52,6 +55,8 @@
       <Appearance />
     {:else if tab === 'shortcuts'}
       <Shortcuts />
+    {:else if tab === 'storage'}
+      <SecretStorage />
     {:else}
       <div class="about">
         <div class="brand">

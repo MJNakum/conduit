@@ -4,6 +4,7 @@
   import { trapFocus } from './actions/trapFocus'
 
   let value = $state('')
+  let repeat = $state('')
   let input = $state<HTMLInputElement>()
 
   // Seed the prompt field and focus it whenever a new request appears.
@@ -11,6 +12,7 @@
     const req = dialogState.current
     if (req?.kind === 'prompt') {
       value = req.value
+      repeat = ''
       tick().then(() => {
         input?.focus()
         input?.select()
@@ -18,8 +20,20 @@
     }
   })
 
+  // A confirm-style prompt (setting a passphrase) can't be submitted until both
+  // fields agree, and an empty passphrase is never worth accepting.
+  const blocked = $derived.by(() => {
+    const req = dialogState.current
+    if (req?.kind !== 'prompt' || !req.confirm) return false
+    return value.length === 0 || value !== repeat
+  })
+
   function ok() {
-    settleDialog(dialogState.current?.kind === 'prompt' ? value.trim() : true)
+    const req = dialogState.current
+    if (req?.kind !== 'prompt') return settleDialog(true)
+    if (blocked) return
+    // Passphrases are taken verbatim: a trailing space is part of the secret.
+    settleDialog(req.password ? value : value.trim())
   }
   function cancel() {
     settleDialog(dialogState.current?.kind === 'prompt' ? null : false)
@@ -44,13 +58,27 @@
         <input
           bind:this={input}
           bind:value
+          type={req.password ? 'password' : 'text'}
           placeholder={req.placeholder ?? ''}
           onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ok() } }}
         />
+        {#if req.confirm}
+          <input
+            bind:value={repeat}
+            type={req.password ? 'password' : 'text'}
+            placeholder="Repeat"
+            onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ok() } }}
+          />
+          {#if repeat.length > 0 && value !== repeat}
+            <p class="mismatch">These do not match.</p>
+          {/if}
+        {/if}
       {/if}
       <div class="row">
         <button class="btn ghost" onclick={cancel}>Cancel</button>
-        <button class="btn" class:danger={req.danger} onclick={ok}>{req.okLabel ?? 'OK'}</button>
+        <button class="btn" class:danger={req.danger} onclick={ok} disabled={blocked}>
+          {req.okLabel ?? 'OK'}
+        </button>
       </div>
     </div>
   </div>
@@ -103,6 +131,11 @@
   input:focus {
     border-color: hsl(var(--ring) / 0.6);
   }
+  .mismatch {
+    margin: -8px 0 12px;
+    font-size: 12px;
+    color: hsl(var(--destructive));
+  }
   .row {
     display: flex;
     justify-content: flex-end;
@@ -133,5 +166,10 @@
   }
   .btn:hover {
     filter: brightness(1.08);
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+    filter: none;
   }
 </style>

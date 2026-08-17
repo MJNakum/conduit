@@ -31,7 +31,13 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "depends": ["libdbus-1-3"],
+        "recommends": ["gnome-keyring | kwalletmanager | keepassxc"]
+      }
+    }
   },
   "plugins": {
     "updater": {
