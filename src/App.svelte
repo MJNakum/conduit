@@ -15,6 +15,7 @@
     X,
     PanelLeft,
     PanelLeftClose,
+    CopyPlus,
   } from '@lucide/svelte'
   import HostList from './lib/HostList.svelte'
   import TabView from './lib/TabView.svelte'
@@ -24,6 +25,7 @@
   import Snippets from './lib/Snippets.svelte'
   import HistoryView from './lib/History.svelte'
   import Settings from './lib/Settings.svelte'
+  import ContextMenu, { type MenuItem } from './lib/ui/ContextMenu.svelte'
   import Toaster from './lib/Toaster.svelte'
   import LockScreen from './lib/LockScreen.svelte'
   import BroadcastBar from './lib/BroadcastBar.svelte'
@@ -49,6 +51,7 @@
     loadSnippets,
     openTab,
     closeTab,
+    duplicateTab,
     applyState,
     applyLog,
     applyPrompt,
@@ -193,6 +196,39 @@
     await activate(ui.active)
   }
 
+  // ---- Tab context menu ---------------------------------------------------
+  let tabMenu = $state<{ key: string; x: number; y: number } | null>(null)
+
+  // Open a second connection to the same host. Routed through activate() so the
+  // new tab's terminal refits, same as every other tab switch.
+  async function duplicate(key: string) {
+    if (!duplicateTab(key)) return
+    await activate(ui.active)
+  }
+
+  function tabMenuItems(key: string): MenuItem[] {
+    const tab = ui.tabs.find((t) => t.key === key)
+    const panes = tab?.panes.length ?? 0
+    const hosts = tab?.panes.filter((p) => p.host).length ?? 0
+    return [
+      {
+        // A tab can hold 2 or 4 panes on different hosts, so say which it is.
+        label: panes > 1 ? `Duplicate tab (${hosts} sessions)` : 'Duplicate session',
+        icon: CopyPlus,
+        // Nothing to reconnect to until at least one pane has picked a host.
+        disabled: hosts === 0,
+        onselect: () => duplicate(key),
+      },
+      { label: 'Close tab', icon: X, danger: true, onselect: () => closeTab(key) },
+    ]
+  }
+
+  // Keyboard equivalent of right-click, anchored to the tab itself.
+  function tabMenuFromKeyboard(e: KeyboardEvent, key: string) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    tabMenu = { key, x: r.left, y: r.bottom }
+  }
+
   // Switch tabs, then nudge the now-visible terminal to refit its (previously
   // hidden, zero-size) container.
   async function activate(key: string) {
@@ -233,7 +269,13 @@
         class:active={ui.active === tab.key}
         data-roving-item
         onclick={() => activate(tab.key)}
-        onkeydown={(e) => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); closeTab(tab.key) } }}
+        oncontextmenu={(e) => { e.preventDefault(); tabMenu = { key: tab.key, x: e.clientX, y: e.clientY } }}
+        onkeydown={(e) => {
+          if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); closeTab(tab.key) }
+          // Shift+F10 and the Menu key are the standard keyboard route to a
+          // context menu; without them this feature is mouse-only.
+          else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); tabMenuFromKeyboard(e, tab.key) }
+        }}
       >
         {#if host?.color}<span class="accent" style:background={host.color}></span>{/if}
         <span class="pdot" style:background={tabDot(tab)}></span>
@@ -249,6 +291,16 @@
       </button>
     {/each}
   </nav>
+
+  {#if tabMenu}
+    <ContextMenu
+      x={tabMenu.x}
+      y={tabMenu.y}
+      ariaLabel="Tab actions"
+      items={tabMenuItems(tabMenu.key)}
+      onclose={() => (tabMenu = null)}
+    />
+  {/if}
 
   <div class="body">
     <!-- SIDEBAR — section switcher + vault pill (local-first trust anchor) -->
