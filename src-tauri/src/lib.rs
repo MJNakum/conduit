@@ -38,6 +38,30 @@ fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// How this build was installed. Tauri patches a marker into the binary at
+/// bundle time, so this is the same source the updater plugin uses to decide
+/// which installer to run.
+///
+/// The frontend needs it because a package-managed install must not update
+/// itself: on a .deb the updater shells out to `dpkg -i` behind pkexec, which
+/// needs a polkit agent that a minimal desktop may not have, and it would also
+/// install a package behind the back of the package manager that owns the app.
+/// Returns "unknown" for `tauri dev` and any unpatched binary.
+#[tauri::command]
+fn install_kind() -> String {
+    use tauri::utils::config::BundleType;
+    match tauri::utils::platform::bundle_type() {
+        Some(BundleType::Deb) => "deb",
+        Some(BundleType::Rpm) => "rpm",
+        Some(BundleType::AppImage) => "appimage",
+        Some(BundleType::Msi) => "msi",
+        Some(BundleType::Nsis) => "nsis",
+        Some(BundleType::App) | Some(BundleType::Dmg) => "app",
+        _ => "unknown",
+    }
+    .to_string()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[allow(unused_mut)]
@@ -114,6 +138,7 @@ pub fn run() {
             sftp::sftp_upload,
             sftp::sftp_close,
             auth::vault_authenticate,
+            install_kind,
             open_url
         ])
         .run(tauri::generate_context!())
