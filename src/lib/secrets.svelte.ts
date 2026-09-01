@@ -6,9 +6,11 @@
 // CAUTION: `loadStatus()` forces the backend to probe for a Secret Service. On a
 // machine whose keyring is installed but locked, that probe can raise the
 // desktop's own unlock dialog. Call it when the user opens the Keys page or
-// Settings > Secret storage — deliberate visits to credential UI, where a prompt
-// is expected — and after a secret operation fails. Never from App's onMount:
-// that would put a D-Bus round trip, and possibly a modal, on the launch path.
+// or the Secret storage section — deliberate visits to credential UI, where a
+// prompt is expected. App also primes it shortly after first paint via
+// promptUnlockAtLaunch(), so the passphrase is asked for up front rather than at
+// the moment a connection fails. That call is not awaited before render, so the
+// probe stays off the launch path even though it happens early.
 import { invoke } from '@tauri-apps/api/core'
 import { passphraseDialog } from './dialog.svelte'
 
@@ -23,9 +25,15 @@ export type SecretStatus = {
   linux: boolean
 }
 
-export const secretsState = $state<{ status: SecretStatus | null; busy: boolean }>({
+export const secretsState = $state<{
+  status: SecretStatus | null
+  busy: boolean
+  /** Launch-time unlock modal is showing. */
+  promptUnlock: boolean
+}>({
   status: null,
   busy: false,
+  promptUnlock: false,
 })
 
 export async function loadStatus(): Promise<SecretStatus | null> {
@@ -91,5 +99,39 @@ export async function ensureUsable(): Promise<boolean> {
     } finally {
       secretsState.busy = false
     }
+  }
+}
+
+/**
+ * Ask for the passphrase up front, at launch, instead of letting the first
+ * connection fail at the auth step with "could not read this key from secret
+ * storage" and leaving the user to find the unlock button themselves.
+ *
+ * Only prompts for a store that exists and is locked: an unconfigured store
+ * holds nothing, and the keyring backends are already unlocked by the desktop.
+ * Call it after first paint — it costs a backend probe, and startup latency is
+ * the metric this app cares about most.
+ */
+export async function promptUnlockAtLaunch() {
+  const s = await loadStatus()
+  if (s?.kind === 'file' && s.locked) secretsState.promptUnlock = true
+}
+
+export function dismissUnlockPrompt() {
+  secretsState.promptUnlock = false
+}
+
+/** Returns null on success, or a message to show beside the field. */
+export async function unlockWith(passphrase: string): Promise<string | null> {
+  if (secretsState.busy) return null
+  secretsState.busy = true
+  try {
+    secretsState.status = await invoke<SecretStatus>('secret_store_unlock', { passphrase })
+    secretsState.promptUnlock = false
+    return null
+  } catch (e) {
+    return String(e)
+  } finally {
+    secretsState.busy = false
   }
 }

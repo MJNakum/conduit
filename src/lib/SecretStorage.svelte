@@ -11,6 +11,9 @@
 
   const s = $derived(secretsState.status)
   const keyringOk = $derived(s?.kind === 'keyring')
+  // A working, unlocked encrypted file is a perfectly good state — only flag the
+  // card when there is something for the user to do, or it cries wolf every launch.
+  const needsAction = $derived(s?.kind === 'file' && (s.locked || s.uninitialized))
 
   function copy(text: string) {
     navigator.clipboard?.writeText(text)
@@ -61,12 +64,12 @@
   {#if !s}
     <p class="muted">Checking secret storage…</p>
   {:else}
-    <section class="card" class:warn={!keyringOk}>
+    <section class="card" class:warn={needsAction}>
       <div class="head">
-        {#if keyringOk}
-          <ShieldCheck size={16} />
-        {:else}
+        {#if needsAction}
           <ShieldAlert size={16} />
+        {:else}
+          <ShieldCheck size={16} />
         {/if}
         <span class="name">{s.label}</span>
         {#if s.kind === 'file'}
@@ -83,7 +86,7 @@
       </div>
       <p class="detail">{s.detail}</p>
 
-      {#if s.kind === 'file' && (s.locked || s.uninitialized)}
+      {#if needsAction}
         <div class="acts">
           <button class="btn primary" onclick={setUpNow} disabled={secretsState.busy}>
             {s.uninitialized ? 'Set a passphrase' : 'Unlock'}

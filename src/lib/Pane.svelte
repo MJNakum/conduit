@@ -32,10 +32,9 @@
   // Telnet has no client auth; SSH managed-key/saved-secret also skip the prompt.
   const promptSecret = $derived(!isTelnet && !hasSaved && !managedKey)
 
-  // Only a hint for the save checkbox. Deliberately does not fetch the status —
-  // that would force a backend probe on the connect path, and connection latency
-  // is the metric that matters. It reads as false until the user has visited the
-  // Keys or Settings page; `ensureUsable()` still does the real work at save time.
+  // Only a hint for the save checkbox; it reads the status rather than fetching
+  // it, so it costs nothing on the connect path. App primes the status at launch
+  // (promptUnlockAtLaunch), and `ensureUsable()` does the real work regardless.
   const storeLocked = $derived(
     secretsState.status?.kind === 'file' &&
       (secretsState.status.locked || secretsState.status.uninitialized),
@@ -76,6 +75,16 @@
 
   async function connect() {
     if (!pane.host) return
+    // A managed key lives in secret storage, and a saved password is read from
+    // it too — so ask for the passphrase before dialling rather than letting
+    // authentication fail with "could not read this key from secret storage".
+    // ensureUsable() is a no-op on the keyring backends and on an already
+    // unlocked store, so this costs nothing in the common case.
+    if (!isTelnet && (managedKey || hasSaved) && !(await ensureUsable())) {
+      pane.phase = 'error'
+      pane.error = 'Secret storage is locked, so this host\u2019s credentials cannot be read.'
+      return
+    }
     startAttempt()
     try {
       if (isTelnet) {
