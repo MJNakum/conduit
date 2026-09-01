@@ -12,9 +12,11 @@
 //!   sessions with no Secret Service — minimal desktops, tiling WMs, headless
 //!   boxes. Guarded by a passphrase the user sets once.
 //!
-//! The backend is probed lazily on first secret access, never at startup, so it
-//! costs nothing on launch. On macOS and Windows the choice is a compile-time
-//! constant with no runtime probe at all.
+//! The backend is probed once, lazily, on the first secret access. The frontend
+//! triggers that shortly after first paint so it can ask for the file store's
+//! passphrase up front instead of letting the first connection fail — the probe
+//! is off the render path, not on it. On macOS and Windows the choice is a
+//! compile-time constant with no runtime probe at all.
 
 use keyring::Entry;
 use serde::Serialize;
@@ -83,7 +85,7 @@ fn kind() -> Kind {
 }
 
 /// Sits next to `keys.json`. Written only when the user explicitly picks a
-/// backend in Settings; absent means "decide automatically".
+/// backend in the UI; absent means "decide automatically".
 #[cfg(target_os = "linux")]
 const OVERRIDE_FILE: &str = "secrets.backend";
 
@@ -341,7 +343,7 @@ enum Read {
 
 #[cfg(target_os = "linux")]
 const LOCKED: &str =
-    "the encrypted secret store is locked — unlock it under Settings > Secret storage";
+    "the encrypted secret store is locked — unlock it from Secret storage in the sidebar";
 
 fn read(account: &str) -> Read {
     match kind() {

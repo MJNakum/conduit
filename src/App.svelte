@@ -16,6 +16,7 @@
     PanelLeft,
     PanelLeftClose,
     CopyPlus,
+    ShieldCheck,
   } from '@lucide/svelte'
   import HostList from './lib/HostList.svelte'
   import TabView from './lib/TabView.svelte'
@@ -25,6 +26,8 @@
   import Snippets from './lib/Snippets.svelte'
   import HistoryView from './lib/History.svelte'
   import Settings from './lib/Settings.svelte'
+  import SecretStorage from './lib/SecretStorage.svelte'
+  import SecretUnlock from './lib/SecretUnlock.svelte'
   import ContextMenu, { type MenuItem } from './lib/ui/ContextMenu.svelte'
   import Toaster from './lib/Toaster.svelte'
   import LockScreen from './lib/LockScreen.svelte'
@@ -41,6 +44,7 @@
   import { vault, lockVault } from './lib/vault.svelte'
   import { toast } from './lib/toast.svelte'
   import { checkForUpdates } from './lib/updates.svelte'
+  import { secretsState, promptUnlockAtLaunch } from './lib/secrets.svelte'
   import { loadForwards, applyForwardState } from './lib/state.svelte'
   import {
     ui,
@@ -70,8 +74,8 @@
   let paletteOpen = $state(false)
   let helpOpen = $state(false)
   // Which home-view section is showing (only when no terminal tab is active).
-  let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards' | 'history' | 'settings'>('hosts')
-  let settingsTab = $state<'appearance' | 'shortcuts' | 'storage' | 'about'>('appearance')
+  let section = $state<'hosts' | 'keys' | 'snippets' | 'forwards' | 'secrets' | 'history' | 'settings'>('hosts')
+  let settingsTab = $state<'appearance' | 'shortcuts' | 'about'>('appearance')
   let sidebarCollapsed = $state(localStorage.getItem('sidebarCollapsed') === '1')
 
   function toggleSidebar() {
@@ -88,6 +92,10 @@
     loadSnippets()
     // Silent auto-update check on launch; only surfaces if an update is found.
     checkForUpdates()
+    // Ask for the store passphrase up front rather than letting the first
+    // connection fail at the auth step. Deliberately not awaited: it costs a
+    // backend probe and must not hold up first paint.
+    promptUnlockAtLaunch()
     listen<StatePayload>('ssh://state', (e) => applyState(e.payload))
     listen<LogPayload>('ssh://log', (e) => applyLog(e.payload))
     listen<PromptPayload>('ssh://prompt', (e) => applyPrompt(e.payload))
@@ -177,6 +185,7 @@
       case 'gotoKeys': goSection('keys'); break
       case 'gotoSnippets': goSection('snippets'); break
       case 'gotoForwards': goSection('forwards'); break
+      case 'gotoSecrets': goSection('secrets'); break
       case 'gotoHistory': goSection('history'); break
       case 'cycleRegionNext': cycleRegion(1); break
       case 'cycleRegionPrev': cycleRegion(-1); break
@@ -326,6 +335,15 @@
         </button>
         <button
           class="side-item"
+          class:active={ui.active === 'home' && section === 'secrets'}
+          data-roving-item
+          title="Secret storage"
+          onclick={() => goSection('secrets')}
+        >
+          <ShieldCheck size={15} /> <span class="lbl">Secret storage</span>
+        </button>
+        <button
+          class="side-item"
           class:active={ui.active === 'home' && section === 'snippets'}
           data-roving-item
           title="Snippets"
@@ -400,11 +418,13 @@
     <div class="main" use:region={'content'}>
       <div class="page" class:hidden={ui.active !== 'home'}>
         {#if section === 'keys'}
-          <KeyManager onOpenStorage={() => { settingsTab = 'storage'; goSection('settings') }} />
+          <KeyManager onOpenStorage={() => goSection('secrets')} />
         {:else if section === 'snippets'}
           <Snippets />
         {:else if section === 'forwards'}
           <PortForwards />
+        {:else if section === 'secrets'}
+          <SecretStorage />
         {:else if section === 'history'}
           <HistoryView />
         {:else if section === 'settings'}
@@ -445,7 +465,11 @@
   {#if helpOpen}
     <ShortcutsOverlay onclose={() => (helpOpen = false)} />
   {/if}
-  {#if vault.locked}
+  {#if secretsState.promptUnlock && !vault.locked}
+  <SecretUnlock />
+{/if}
+
+{#if vault.locked}
     <LockScreen />
   {/if}
   <DialogHost />

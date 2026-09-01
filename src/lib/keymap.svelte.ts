@@ -19,6 +19,7 @@ export type ActionId =
   | 'gotoKeys'
   | 'gotoSnippets'
   | 'gotoForwards'
+  | 'gotoSecrets'
   | 'gotoSettings'
   | 'gotoHistory'
   | 'cycleRegionNext'
@@ -45,6 +46,7 @@ export const ACTIONS: Action[] = [
   { id: 'gotoForwards', label: 'Go to Port Forwards', category: 'Navigation', def: 'mod+4' },
   { id: 'gotoSettings', label: 'Go to Settings', category: 'Navigation', def: 'mod+5' },
   { id: 'gotoHistory', label: 'Go to History', category: 'Navigation', def: 'mod+6' },
+  { id: 'gotoSecrets', label: 'Go to Secret storage', category: 'Navigation', def: 'mod+7' },
   { id: 'cycleRegionNext', label: 'Focus next region', category: 'Navigation', def: 'f6' },
   { id: 'cycleRegionPrev', label: 'Focus previous region', category: 'Navigation', def: 'shift+f6' },
   { id: 'focusTerminal', label: 'Focus the terminal', category: 'Navigation', def: 'mod+j' },
