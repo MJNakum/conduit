@@ -6,7 +6,8 @@
   import Shortcuts from './Shortcuts.svelte'
   import SecretStorage from './SecretStorage.svelte'
   import { checkForUpdates, updateState } from './updates.svelte'
-  import { Palette, Keyboard, Info, SlidersHorizontal, ShieldCheck } from '@lucide/svelte'
+  import { Palette, Keyboard, Info, SlidersHorizontal, ShieldCheck, Copy, ArrowUpCircle } from '@lucide/svelte'
+  import { toast } from './toast.svelte'
 
   let { tab = $bindable('appearance') }: { tab?: 'appearance' | 'shortcuts' | 'storage' | 'about' } =
     $props()
@@ -37,6 +38,11 @@
   // ----------------------------------------------------------------------
 
   const openLink = (url: string) => invoke('open_url', { url })
+
+  function copyCmd(cmd: string) {
+    navigator.clipboard?.writeText(cmd)
+    toast('Copied to clipboard')
+  }
 </script>
 
 <div class="wrap">
@@ -76,7 +82,23 @@
             {updateState.checking ? 'Checking…' : 'Check for updates'}
           </button>
         </div>
-        <p class="hint">Updates install automatically once downloaded, then the app relaunches.</p>
+        {#if updateState.available}
+          <!-- Package-managed install: we report the new version, the package
+               manager applies it. -->
+          <div class="avail">
+            <div class="avail-head"><ArrowUpCircle size={15} /> Version {updateState.available.version} is available</div>
+            <p class="hint">
+              This copy of Conduit was installed by your package manager, so update it there —
+              installing from inside the app would put a package underneath the manager that owns it.
+            </p>
+            <div class="cmdrow">
+              <code class="mono">{updateState.available.command}</code>
+              <button class="icon" title="Copy" onclick={() => copyCmd(updateState.available!.command)}><Copy size={13} /></button>
+            </div>
+          </div>
+        {:else}
+          <p class="hint">Updates install automatically once downloaded, then the app relaunches.</p>
+        {/if}
 
         <div class="sep"></div>
 
@@ -214,6 +236,53 @@
     margin: 0;
     color: hsl(var(--muted-foreground));
     font-size: 12px;
+  }
+  .avail {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 9px;
+    background: hsl(var(--muted));
+  }
+  .avail-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .cmdrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .cmdrow .mono {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    padding: 6px 9px;
+    border-radius: 6px;
+    background: hsl(var(--background));
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+  }
+  .icon {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    padding: 5px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+  }
+  .icon:hover {
+    background: hsl(var(--border));
+    color: hsl(var(--foreground));
   }
   .sep {
     width: 100%;

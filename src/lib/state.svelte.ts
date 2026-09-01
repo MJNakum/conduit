@@ -395,6 +395,29 @@ export function openTab(host: Host | null): Tab {
   return tab
 }
 
+// Open a second connection alongside an existing tab. SSH has no way to clone a
+// live session, so this is a fresh connection to the same host(s) — same layout,
+// same targets, its own sessions. The copy lands on the normal connect screen
+// exactly as opening the host from the list does; nothing auto-connects here,
+// because a duplicate of a password host would otherwise silently reuse a stored
+// secret the user never re-confirmed.
+export function duplicateTab(key: string): Tab | null {
+  const src = ui.tabs.find((t) => t.key === key)
+  if (!src) return null
+  const panes = src.panes.map((p) => newPane(p.host))
+  const tab: Tab = {
+    key: crypto.randomUUID(),
+    layout: src.layout,
+    panes,
+    active: panes[0].key,
+  }
+  // Sits immediately after its original rather than at the end, so a duplicate
+  // of tab 1 doesn't appear eight tabs away.
+  ui.tabs.splice(ui.tabs.indexOf(src) + 1, 0, tab)
+  ui.active = tab.key
+  return tab
+}
+
 // Grow/shrink a tab's pane grid. Removed panes have their sessions torn down.
 export function setLayout(tab: Tab, layout: Layout) {
   const want = PANE_COUNT[layout]
